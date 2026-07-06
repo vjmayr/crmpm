@@ -12,9 +12,10 @@ from decimal import Decimal
 from sqlalchemy import case, func
 
 from app.extensions import db
-from app.projects.models import Section, Task, WorkPackage
+from app.projects.models import Project, Section, Task, WorkPackage
 
 ZERO = Decimal("0")
+NEAR_BUDGET_FRACTION = Decimal("0.8")
 
 
 def _unestimated_count(column):
@@ -86,3 +87,67 @@ def project_rollup(project):
             "task_delta": (budget - task_total) if budget is not None else None,
         },
     }
+
+
+def budget_health(budget_hours, wp_hours, task_hours):
+    """Health signal vs the LARGER of the two estimate sums (conservative:
+    whichever level predicts more work is the one that threatens the budget).
+
+    States: no_budget / within / near (>80% consumed) / over.
+    """
+    if budget_hours is None:
+        return "no_budget"
+    larger = max(wp_hours, task_hours)
+    if larger > budget_hours:
+        return "over"
+    if larger > NEAR_BUDGET_FRACTION * budget_hours:
+        return "near"
+    return "within"
+
+
+def portfolio_rollup(statuses=None):
+    """Per-project estimate sums and budget health across the portfolio.
+
+    The multi-project version of project_rollup: both estimate sums are
+    computed independently (never coalesced) with one GROUP BY aggregate per
+    level — a constant three queries no matter how many projects exist.
+    statuses limits the set (e.g. [ProjectStatus.ACTIVE]); None means all.
+    """
+    project_query = Project.query.order_by(Project.id)
+    if statuses is not None:
+        project_query = project_query.filter(Project.status.in_(statuses))
+    projects = project_query.all()
+
+    wp_rows = (
+        db.session.query(
+            Section.project_id, func.sum(WorkPackage.estimated_hours)
+        )
+        .join(Section, WorkPackage.section_id == Section.id)
+        .group_by(Section.project_id)
+        .all()
+    )
+    wp_by_project = {row[0]: row[1] or ZERO for row in wp_rows}
+
+    task_rows = (
+        db.session.query(Section.project_id, func.sum(Task.estimated_hours))
+        .join(WorkPackage, Task.work_package_id == WorkPackage.id)
+        .join(Section, WorkPackage.section_id == Section.id)
+        .group_by(Section.project_id)
+        .all()
+    )
+    tasks_by_project = {row[0]: row[1] or ZERO for row in task_rows}
+
+    entries = []
+    for project in projects:
+        wp_hours = wp_by_project.get(project.id, ZERO)
+        task_hours = tasks_by_project.get(project.id, ZERO)
+        entries.append(
+            {
+                "project": project,
+                "wp_hours": wp_hours,
+                "task_hours": task_hours,
+                "budget_hours": project.budget_hours,
+                "health": budget_health(project.budget_hours, wp_hours, task_hours),
+            }
+        )
+    return entries

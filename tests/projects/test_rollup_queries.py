@@ -4,9 +4,14 @@ import pytest
 from sqlalchemy import event
 
 from app.crm.models import Organization
-from app.projects.models import BudgetType, Customer, CustomerType, Project
-from app.projects.queries import project_rollup
-from app.projects.services import create_section, create_task, create_work_package
+from app.projects.models import BudgetType, Customer, CustomerType, Project, ProjectStatus
+from app.projects.queries import budget_health, portfolio_rollup, project_rollup
+from app.projects.services import (
+    create_project,
+    create_section,
+    create_task,
+    create_work_package,
+)
 
 
 @pytest.fixture()
@@ -106,6 +111,69 @@ def test_rollup_on_empty_project_is_all_zeros(db, project):
     assert totals["task_hours"] == Decimal("0")
     assert totals["unestimated_wps"] == 0
     assert totals["unestimated_tasks"] == 0
+
+
+# --- portfolio_rollup + budget_health (Phase 6) -------------------------------
+
+
+def test_budget_health_states():
+    assert budget_health(None, Decimal("30"), Decimal("10")) == "no_budget"
+    assert budget_health(Decimal("40"), Decimal("30"), Decimal("10")) == "within"
+    assert budget_health(Decimal("40"), Decimal("35"), Decimal("10")) == "near"
+    assert budget_health(Decimal("40"), Decimal("10"), Decimal("55")) == "over"  # larger sum wins
+    assert budget_health(Decimal("40"), Decimal("32"), Decimal("0")) == "within"  # exactly 80%
+
+
+def test_portfolio_rollup_sums_and_health(db, project, tree, test_user):
+    customer = Customer.query.one()
+    bare = create_project(customer, "Bare Project", test_user, BudgetType.SOFT)
+
+    entries = portfolio_rollup()
+
+    by_name = {entry["project"].name: entry for entry in entries}
+    main = by_name["Rollup Project"]
+    assert main["wp_hours"] == Decimal("30")
+    assert main["task_hours"] == Decimal("9.5")
+    assert main["budget_hours"] == Decimal("40")
+    assert main["health"] == "within"  # max(30, 9.5) <= 0.8 * 40
+
+    empty = by_name["Bare Project"]
+    assert empty["wp_hours"] == Decimal("0")
+    assert empty["task_hours"] == Decimal("0")
+    assert empty["health"] == "no_budget"
+
+
+def test_portfolio_rollup_filters_by_status(db, project, tree, test_user):
+    customer = Customer.query.one()
+    parked = create_project(customer, "Parked", test_user, BudgetType.SOFT)
+    parked.status = ProjectStatus.ON_HOLD  # plain editable field
+    db.session.commit()
+
+    active_only = portfolio_rollup(statuses=[ProjectStatus.ACTIVE])
+
+    names = {entry["project"].name for entry in active_only}
+    assert "Rollup Project" in names
+    assert "Parked" not in names
+
+
+def test_portfolio_rollup_query_count_is_constant(db, project, tree, test_user):
+    customer = Customer.query.one()
+    create_project(customer, "Second Project", test_user, BudgetType.SOFT)
+
+    counter = {"n": 0}
+
+    def count_query(conn, cursor, statement, parameters, context, executemany):
+        counter["n"] += 1
+
+    engine = db.session.get_bind()
+    event.listen(engine, "before_cursor_execute", count_query)
+    try:
+        portfolio_rollup()
+    finally:
+        event.remove(engine, "before_cursor_execute", count_query)
+
+    # projects + WP aggregate + task aggregate — never one per project.
+    assert counter["n"] <= 3
 
 
 def test_rollup_query_count_is_constant(db, project, tree):
