@@ -1,8 +1,84 @@
 {% extends "base.html" %}
+{% from "projects/partials/_health_badge.html" import health_badge %}
 
 {% block title %}Dashboard — CRMPM{% endblock %}
 
 {% block content %}
-<h1 class="text-2xl font-semibold text-gray-900">Dashboard</h1>
-<p class="mt-2 text-sm text-gray-500">Welcome back, {{ current_user.name }}. Pipeline and project widgets land in later phases.</p>
+<h1 class="text-2xl font-semibold text-gray-900 mb-6">Dashboard</h1>
+
+{% set funnel_styles = {
+    "OPEN": "border-blue-200",
+    "PROPOSAL": "border-yellow-200",
+    "OFFER_SENT": "border-purple-200",
+    "WON": "border-green-200",
+    "LOST": "border-gray-200",
+} %}
+
+<h2 class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Pipeline funnel</h2>
+<div class="flex gap-3 mb-8 max-w-4xl">
+    {% for status, count in funnel %}
+    <a href="{{ url_for('crm.pipeline', status=status.value) }}" class="flex-1 rounded-lg border-2 {{ funnel_styles[status.value] }} bg-white px-4 py-3 hover:border-blue-400">
+        <p class="text-2xl font-semibold text-gray-900">{{ count }}</p>
+        <p class="text-xs text-gray-500">{{ status.value.replace("_", " ").title() }}</p>
+    </a>
+    {% endfor %}
+</div>
+
+<h2 class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">CRM</h2>
+<div class="flex gap-3 mb-8 max-w-2xl">
+    <a href="{{ url_for('crm.person_list') }}" class="flex-1 rounded-lg border border-gray-200 bg-white px-4 py-3 hover:border-blue-400">
+        <p class="text-2xl font-semibold text-gray-900">{{ people_total }}</p>
+        <p class="text-xs text-gray-500">People</p>
+    </a>
+    <div class="flex-1 rounded-lg border border-gray-200 bg-white px-4 py-3">
+        <p class="text-2xl font-semibold text-gray-900">{{ contactable_count }}</p>
+        <p class="text-xs text-gray-500">Contactable</p>
+    </div>
+    <a href="{{ url_for('crm.person_list', qualification_status='QUALIFIED') }}" class="flex-1 rounded-lg border border-gray-200 bg-white px-4 py-3 hover:border-blue-400">
+        <p class="text-2xl font-semibold text-gray-900">{{ promotion_candidates }}</p>
+        <p class="text-xs text-gray-500">Qualified, not yet promoted</p>
+    </a>
+</div>
+
+<h2 class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Offers in flight</h2>
+{% if offers_in_flight %}
+<table class="min-w-full divide-y divide-gray-200 max-w-3xl mb-8">
+    <thead>
+        <tr class="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
+            <th class="py-2 pr-4">Person</th>
+            <th class="py-2 pr-4">Organization</th>
+            <th class="py-2 pr-4">Proposal</th>
+            <th class="py-2 pr-4">Sent</th>
+        </tr>
+    </thead>
+    <tbody class="divide-y divide-gray-100">
+        {% for offer in offers_in_flight %}
+        <tr>
+            <td class="py-2 pr-4">
+                <a href="{{ url_for('crm.offer_detail', offer_id=offer.id) }}" class="text-blue-600 hover:underline">{{ offer.version.proposal.lead.person.name }}</a>
+            </td>
+            <td class="py-2 pr-4 text-gray-500">{{ offer.version.proposal.lead.person.organization.name if offer.version.proposal.lead.person.organization else "—" }}</td>
+            <td class="py-2 pr-4 text-gray-500">{{ offer.version.proposal.title }}</td>
+            <td class="py-2 pr-4 text-gray-500">{{ offer.sent_at.strftime('%Y-%m-%d') if offer.sent_at else "—" }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p class="text-sm text-gray-400 mb-8">No offers out right now — <a href="{{ url_for('crm.pipeline') }}" class="text-blue-600 hover:underline">check the pipeline</a> for leads ready to move.</p>
+{% endif %}
+
+<h2 class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Active projects</h2>
+{% if portfolio %}
+<div class="space-y-2 max-w-3xl">
+    {% for entry in portfolio %}
+    <a href="{{ url_for('projects.project_detail', project_id=entry.project.id) }}" class="flex items-center justify-between rounded-lg border border-gray-200 bg-white px-4 py-3 hover:border-blue-400">
+        <span class="text-sm font-medium text-gray-900">{{ entry.project.name }}</span>
+        <span>{{ health_badge(entry) }}</span>
+    </a>
+    {% endfor %}
+</div>
+{% else %}
+<p class="text-sm text-gray-400">No active projects — <a href="{{ url_for('projects.project_create') }}" class="text-blue-600 hover:underline">create one</a> or accept an offer.</p>
+{% endif %}
 {% endblock %}
