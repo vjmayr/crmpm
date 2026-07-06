@@ -22,6 +22,7 @@ Lightweight CRM & Project Management Tool. Single developer, token-conscious wor
 - Timestamps: UTC, timezone-aware.
 - Tests mirror app structure: `tests/crm/`, `tests/projects/`, `tests/services/`.
 - Commits: one logical change per commit; tag phase completions (`phase-0`, `phase-1`, ...).
+- Contactable lists: only via `Person.contactable()` — never filter `permission_to_contact` directly (enforced by `tests/crm/test_conformance.py`). `Organization.people` is an unfiltered roster; never use it to drive contact actions.
 
 ## Decision log
 
