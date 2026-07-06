@@ -140,11 +140,13 @@ def test_migration_upgrade_and_downgrade_run_cleanly(tmp_path):
             ).fetchall()
         return {row[0] for row in rows}
 
+    domain_tables = {"leads", "proposals", "proposal_versions", "estimations"}
+
     run_db("upgrade")
-    assert "leads" in table_names()
+    assert domain_tables <= table_names()
 
     run_db("downgrade", "base")
     assert table_names() <= {"alembic_version"}
 
     run_db("upgrade")
-    assert "leads" in table_names()
+    assert domain_tables <= table_names()

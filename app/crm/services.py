@@ -2,14 +2,28 @@
 
 Lead status transition ownership (ARCHITECTURE.md §4.2):
     OPEN        promote_to_lead() — this module (Phase 2)
-    PROPOSAL    proposal-creation service — Phase 3
+    PROPOSAL    create_proposal() — this module (Phase 3); fires once, from OPEN only
     OFFER_SENT  offer send() service — Phase 4
     WON         offer_accepted() in app/services/ — Phase 4
     LOST        close_lead() — this module; explicit user action ONLY (D4)
 """
 
-from app.crm.exceptions import LeadStateError, PromotionError
-from app.crm.models import Lead, LeadStatus, QualificationStatus
+from app.crm.exceptions import (
+    EstimationLockedError,
+    EstimationValidationError,
+    LeadStateError,
+    PromotionError,
+    ProposalError,
+)
+from app.crm.models import (
+    Estimation,
+    Lead,
+    LeadStatus,
+    PricingModel,
+    Proposal,
+    ProposalVersion,
+    QualificationStatus,
+)
 from app.extensions import db
 
 #: WON and LOST are terminal (§4.1/§4.2); no transition ever leaves them.
@@ -50,3 +64,161 @@ def close_lead(lead):
     lead.status = LeadStatus.LOST
     db.session.commit()
     return lead
+
+
+def estimation_is_locked(estimation):
+    """Invariant #6 seam: True when the estimation's version is bound to a SENT offer.
+
+    Placeholder until the Offer model exists — Phase 4 implements the real
+    check. Every estimation-mutating service must already call this.
+    """
+    return False
+
+
+def _require_lead_not_terminal(lead, action):
+    if lead.status in TERMINAL_STATUSES:
+        raise ProposalError(
+            f"Cannot {action}: lead {lead.id} is {lead.status.value} (terminal)."
+        )
+
+
+def create_proposal(lead, title, content, created_by):
+    """Create a Proposal with version 1, atomically.
+
+    Transitions the lead OPEN -> PROPOSAL only if currently OPEN: the
+    transition fires once per lead (§4.2); later proposals (e.g. after a
+    denied offer) never regress the status.
+    """
+    _require_lead_not_terminal(lead, "create a proposal")
+
+    proposal = Proposal(lead_id=lead.id, title=title)
+    db.session.add(proposal)
+    db.session.flush()
+    version = ProposalVersion(
+        proposal_id=proposal.id,
+        version_number=1,
+        content=content,
+        created_by=created_by.id,
+    )
+    db.session.add(version)
+    if lead.status == LeadStatus.OPEN:
+        lead.status = LeadStatus.PROPOSAL
+    db.session.commit()
+    return proposal
+
+
+def add_version(proposal, content, created_by, copy_estimation=True):
+    """Append the next version. Versions are never edited — only added.
+
+    Copy-forward rule (see DECISIONS.md): with copy_estimation=True, the
+    latest version's Estimation is duplicated as a NEW row on the new
+    version, so pricing evolves by editing the copy. Estimation rows are
+    never re-parented or shared across versions.
+    """
+    _require_lead_not_terminal(proposal.lead, "add a version")
+
+    latest = (
+        ProposalVersion.query.filter_by(proposal_id=proposal.id)
+        .order_by(ProposalVersion.version_number.desc())
+        .first()
+    )
+    # max+1; the (proposal_id, version_number) unique constraint is the race backstop.
+    next_number = (latest.version_number if latest else 0) + 1
+
+    version = ProposalVersion(
+        proposal_id=proposal.id,
+        version_number=next_number,
+        content=content,
+        created_by=created_by.id,
+    )
+    db.session.add(version)
+
+    if copy_estimation and latest is not None and latest.estimation is not None:
+        db.session.flush()
+        source = latest.estimation
+        db.session.add(
+            Estimation(
+                proposal_version_id=version.id,
+                pricing_model=source.pricing_model,
+                fixed_price=source.fixed_price,
+                rate_amount=source.rate_amount,
+                rate_unit=source.rate_unit,
+                estimated_units=source.estimated_units,
+                additional_rate=source.additional_rate,
+            )
+        )
+
+    db.session.commit()
+    return version
+
+
+_ESTIMATION_FIELDS = (
+    "pricing_model",
+    "fixed_price",
+    "rate_amount",
+    "rate_unit",
+    "estimated_units",
+    "additional_rate",
+)
+_TIME_BASED_REQUIRED = ("rate_amount", "rate_unit", "estimated_units")
+
+
+def _validate_estimation_state(effective):
+    model = effective["pricing_model"]
+    if model == PricingModel.FIXED:
+        missing = [] if effective["fixed_price"] is not None else ["fixed_price"]
+        forbidden = [
+            f
+            for f in (*_TIME_BASED_REQUIRED, "additional_rate")
+            if effective[f] is not None
+        ]
+    elif model == PricingModel.TIME_BASED:
+        missing = [f for f in _TIME_BASED_REQUIRED if effective[f] is None]
+        forbidden = ["fixed_price"] if effective["fixed_price"] is not None else []
+    else:
+        raise EstimationValidationError("pricing_model is required (FIXED or TIME_BASED).")
+
+    if missing or forbidden:
+        parts = []
+        if missing:
+            parts.append(f"missing for {model.value}: {', '.join(missing)}")
+        if forbidden:
+            parts.append(
+                f"forbidden for {model.value}: {', '.join(forbidden)} "
+                "(clear them explicitly with None)"
+            )
+        raise EstimationValidationError("; ".join(parts))
+
+
+def set_estimation(version, **fields):
+    """Create or update the version's Estimation (invariant #4: at most one).
+
+    Validation runs on the merged final state (existing values overlaid with
+    the given fields), so switching pricing_model requires explicitly passing
+    None for the now-forbidden fields.
+    """
+    unknown = set(fields) - set(_ESTIMATION_FIELDS)
+    if unknown:
+        raise EstimationValidationError(f"Unknown fields: {', '.join(sorted(unknown))}")
+
+    estimation = version.estimation
+    if estimation is not None and estimation_is_locked(estimation):
+        raise EstimationLockedError(
+            f"Estimation {estimation.id} is bound to a SENT offer and is read-only."
+        )
+
+    effective = {
+        f: fields[f] if f in fields else (getattr(estimation, f) if estimation else None)
+        for f in _ESTIMATION_FIELDS
+    }
+    _validate_estimation_state(effective)
+
+    if estimation is None:
+        estimation = Estimation(proposal_version_id=version.id, **effective)
+        db.session.add(estimation)
+    else:
+        for field, value in effective.items():
+            setattr(estimation, field, value)
+
+    db.session.commit()
+    return estimation
