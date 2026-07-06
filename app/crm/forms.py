@@ -37,3 +37,12 @@ class PersonForm(FlaskForm):
         validators=[DataRequired()],
     )
     submit = SubmitField("Save")
+
+
+class LeadDiscoveryForm(FlaskForm):
+    source = StringField("Source", validators=[Optional(), Length(max=255)])
+    timeline = StringField("Timeline", validators=[Optional(), Length(max=255)])
+    budget_range = StringField("Budget range", validators=[Optional(), Length(max=255)])
+    pain_points = TextAreaField("Pain points", validators=[Optional()])
+    discovery_notes = TextAreaField("Discovery notes", validators=[Optional()])
+    submit = SubmitField("Save discovery notes")
