@@ -2,7 +2,7 @@ import os
 
 from flask import Flask
 
-from app.extensions import db, login_manager, migrate
+from app.extensions import csrf, db, login_manager, migrate
 from config import config
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -23,6 +23,7 @@ def create_app(config_name=None):
     db.init_app(app)
     migrate.init_app(app, db)
     login_manager.init_app(app)
+    csrf.init_app(app)
 
     from app.core import core_bp
     from app.crm import crm_bp
@@ -33,6 +34,7 @@ def create_app(config_name=None):
     app.register_blueprint(projects_bp, url_prefix="/projects")
 
     from app.core import models  # noqa: F401  (registers User + user_loader)
+    from app.crm import models  # noqa: F401  (registers Organization, Person)
     from app.core.commands import register_commands
 
     register_commands(app)
