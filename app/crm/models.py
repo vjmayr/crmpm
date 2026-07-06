@@ -27,6 +27,13 @@ class PricingModel(enum.Enum):
     TIME_BASED = "TIME_BASED"
 
 
+class OfferStatus(enum.Enum):
+    DRAFT = "DRAFT"
+    SENT = "SENT"
+    ACCEPTED = "ACCEPTED"
+    DENIED = "DENIED"
+
+
 class RateUnit(enum.Enum):
     HOURLY = "HOURLY"
     DAILY = "DAILY"
@@ -150,6 +157,32 @@ class ProposalVersion(db.Model):
         "Estimation", back_populates="version", uselist=False
     )
     creator = db.relationship("User")
+
+
+class Offer(db.Model):
+    """Binds to a specific ProposalVersion — a frozen snapshot (D7).
+
+    Status is written ONLY by services (CLAUDE.md #7): create_offer /
+    send_offer / deny_offer in app/crm/services.py, accept_offer in
+    app/services/offer_acceptance.py.
+    """
+
+    __tablename__ = "offers"
+
+    id = db.Column(db.Integer, primary_key=True)
+    proposal_version_id = db.Column(
+        db.Integer, db.ForeignKey("proposal_versions.id"), nullable=False
+    )
+    status = db.Column(
+        db.Enum(OfferStatus, native_enum=False, length=20),
+        nullable=False,
+        default=OfferStatus.DRAFT,
+        server_default=OfferStatus.DRAFT.value,
+    )
+    sent_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    decided_at = db.Column(db.DateTime(timezone=True), nullable=True)
+
+    version = db.relationship("ProposalVersion", backref="offers")
 
 
 @event.listens_for(ProposalVersion, "before_update")

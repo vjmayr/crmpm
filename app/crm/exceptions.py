@@ -24,3 +24,11 @@ class EstimationValidationError(CrmDomainError):
 
 class EstimationLockedError(CrmDomainError):
     """The Estimation's version is bound to a SENT offer and is read-only."""
+
+
+class OfferStateError(CrmDomainError):
+    """An invalid Offer status transition was requested (invariant #7)."""
+
+
+class OfferConflictError(CrmDomainError):
+    """The lead already has an open (DRAFT or SENT) offer."""

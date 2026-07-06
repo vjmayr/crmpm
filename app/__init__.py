@@ -34,7 +34,8 @@ def create_app(config_name=None):
     app.register_blueprint(projects_bp, url_prefix="/projects")
 
     from app.core import models  # noqa: F401  (registers User + user_loader)
-    from app.crm import models  # noqa: F401  (registers Organization, Person)
+    from app.crm import models  # noqa: F401  (registers CRM domain models)
+    from app.projects import models  # noqa: F401,F811  (registers Customer, Project)
     from app.core.commands import register_commands
 
     register_commands(app)

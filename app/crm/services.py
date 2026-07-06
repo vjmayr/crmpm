@@ -3,15 +3,25 @@
 Lead status transition ownership (ARCHITECTURE.md §4.2):
     OPEN        promote_to_lead() — this module (Phase 2)
     PROPOSAL    create_proposal() — this module (Phase 3); fires once, from OPEN only
-    OFFER_SENT  offer send() service — Phase 4
-    WON         offer_accepted() in app/services/ — Phase 4
+                deny_offer() — this module (Phase 4); reverts OFFER_SENT -> PROPOSAL
+                for renegotiation (D4, see DECISIONS.md)
+    OFFER_SENT  send_offer() — this module (Phase 4)
+    WON         accept_offer() in app/services/offer_acceptance.py — Phase 4
     LOST        close_lead() — this module; explicit user action ONLY (D4)
+
+Offer status transitions (§4.1) are owned by create_offer/send_offer/deny_offer
+here and accept_offer in app/services/offer_acceptance.py. ACCEPTED and DENIED
+are terminal (invariant #7).
 """
+
+from datetime import datetime, timezone
 
 from app.crm.exceptions import (
     EstimationLockedError,
     EstimationValidationError,
     LeadStateError,
+    OfferConflictError,
+    OfferStateError,
     PromotionError,
     ProposalError,
 )
@@ -19,6 +29,8 @@ from app.crm.models import (
     Estimation,
     Lead,
     LeadStatus,
+    Offer,
+    OfferStatus,
     PricingModel,
     Proposal,
     ProposalVersion,
@@ -66,13 +78,24 @@ def close_lead(lead):
     return lead
 
 
-def estimation_is_locked(estimation):
-    """Invariant #6 seam: True when the estimation's version is bound to a SENT offer.
+#: An offer that ever left DRAFT freezes its version's estimation forever —
+#: DENIED offers are historical records (invariant #6).
+_LOCKING_OFFER_STATUSES = (OfferStatus.SENT, OfferStatus.ACCEPTED, OfferStatus.DENIED)
 
-    Placeholder until the Offer model exists — Phase 4 implements the real
-    check. Every estimation-mutating service must already call this.
+
+def estimation_is_locked(estimation):
+    """Invariant #6: locked iff the estimation's version has any offer ever sent.
+
+    A DRAFT offer does not lock; SENT, ACCEPTED, and DENIED all do — a DENIED
+    offer keeps its version's pricing frozen as part of the historical record.
     """
-    return False
+    return (
+        Offer.query.filter(
+            Offer.proposal_version_id == estimation.proposal_version_id,
+            Offer.status.in_(_LOCKING_OFFER_STATUSES),
+        ).first()
+        is not None
+    )
 
 
 def _require_lead_not_terminal(lead, action):
@@ -222,3 +245,79 @@ def set_estimation(version, **fields):
 
     db.session.commit()
     return estimation
+
+
+def create_offer(proposal_version):
+    """Create a DRAFT offer bound to a specific proposal version (D7).
+
+    At most one open offer (DRAFT or SENT) may exist per lead at a time —
+    parallel contradictory offers are prevented (see DECISIONS.md). A new
+    offer after a DENIED one is the D4 renegotiation loop.
+    """
+    lead = proposal_version.proposal.lead
+    if lead.status in TERMINAL_STATUSES:
+        raise OfferStateError(
+            f"Cannot create an offer: lead {lead.id} is {lead.status.value} (terminal)."
+        )
+
+    open_offer = (
+        Offer.query.join(ProposalVersion, Offer.proposal_version_id == ProposalVersion.id)
+        .join(Proposal, ProposalVersion.proposal_id == Proposal.id)
+        .filter(
+            Proposal.lead_id == lead.id,
+            Offer.status.in_((OfferStatus.DRAFT, OfferStatus.SENT)),
+        )
+        .first()
+    )
+    if open_offer is not None:
+        raise OfferConflictError(
+            f"Lead {lead.id} already has an open offer "
+            f"(offer {open_offer.id}, {open_offer.status.value}). "
+            "Resolve it before creating another."
+        )
+
+    offer = Offer(proposal_version_id=proposal_version.id)
+    db.session.add(offer)
+    db.session.commit()
+    return offer
+
+
+def send_offer(offer):
+    """DRAFT -> SENT. Requires an Estimation on the bound version (invariant #5)."""
+    if offer.status != OfferStatus.DRAFT:
+        raise OfferStateError(
+            f"Offer {offer.id} is {offer.status.value}; only DRAFT offers can be sent."
+        )
+    if offer.version.estimation is None:
+        raise OfferStateError(
+            f"Offer {offer.id} cannot be sent: version "
+            f"{offer.version.version_number} has no estimation (invariant #5)."
+        )
+
+    offer.status = OfferStatus.SENT
+    offer.sent_at = datetime.now(timezone.utc)
+    lead = offer.version.proposal.lead
+    if lead.status == LeadStatus.PROPOSAL:
+        lead.status = LeadStatus.OFFER_SENT
+    db.session.commit()
+    return offer
+
+
+def deny_offer(offer):
+    """SENT -> DENIED (terminal for THIS offer only, D4).
+
+    The lead reverts OFFER_SENT -> PROPOSAL for renegotiation; it never
+    auto-transitions to LOST (invariant #10) and a LOST lead stays LOST.
+    """
+    if offer.status != OfferStatus.SENT:
+        raise OfferStateError(
+            f"Offer {offer.id} is {offer.status.value}; only SENT offers can be denied."
+        )
+
+    offer.status = OfferStatus.DENIED
+    offer.decided_at = datetime.now(timezone.utc)
+    lead = offer.version.proposal.lead
+    if lead.status == LeadStatus.OFFER_SENT:
+        lead.status = LeadStatus.PROPOSAL
+    db.session.commit()
+    return offer
