@@ -1,0 +1,22 @@
+<div id="version-pane">
+    <div class="border border-gray-200 rounded-lg p-4 mb-6">
+        <div class="flex items-center justify-between mb-3">
+            <div>
+                <span class="text-sm font-medium text-gray-900">Version {{ version.version_number }}</span>
+                <span class="text-xs text-gray-400 ml-2">by {{ version.creator.name }} on {{ version.created_at.strftime('%Y-%m-%d %H:%M') }} UTC</span>
+            </div>
+            {% if version.version_number != proposal.versions[-1].version_number %}
+            <span class="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500">Read-only (historical)</span>
+            {% endif %}
+        </div>
+        <!-- TODO(v2): render content as Markdown instead of plain preformatted text. -->
+        <pre class="whitespace-pre-wrap font-mono text-sm bg-gray-50 border border-gray-200 rounded p-4">{{ version.content }}</pre>
+        {% if proposal.lead.status.value not in ("WON", "LOST") %}
+        <div class="mt-3">
+            <a href="{{ url_for('crm.proposal_revise', proposal_id=proposal.id) }}?from={{ version.version_number }}" class="rounded border border-gray-300 text-sm font-medium px-4 py-2 hover:bg-gray-50 inline-block">Revise from this version</a>
+        </div>
+        {% endif %}
+    </div>
+
+    {% include "crm/partials/_estimation_panel.html" %}
+</div>

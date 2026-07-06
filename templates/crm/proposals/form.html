@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+
+{% block title %}New proposal — CRMPM{% endblock %}
+
+{% block content %}
+<h1 class="text-2xl font-semibold text-gray-900 mb-6">New proposal for {{ lead.person.name }}</h1>
+
+{% include "crm/partials/_proposal_form_fields.html" %}
+{% endblock %}

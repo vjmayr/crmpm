@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+
+{% block title %}Revise {{ proposal.title }} — CRMPM{% endblock %}
+
+{% block content %}
+<h1 class="text-2xl font-semibold text-gray-900 mb-6">Revise: {{ proposal.title }}</h1>
+
+{% include "crm/partials/_revise_form_fields.html" %}
+{% endblock %}

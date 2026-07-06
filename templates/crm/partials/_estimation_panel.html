@@ -1,0 +1,35 @@
+<div id="estimation-panel" class="border border-gray-200 rounded-lg p-4">
+    <h3 class="text-sm font-semibold text-gray-900 mb-3">Estimation</h3>
+    {% if error %}
+    <p class="text-sm text-red-600 mb-3">{{ error }}</p>
+    {% endif %}
+    {% if not version.estimation %}
+    <p class="text-sm text-gray-400 mb-3">No estimation yet.</p>
+    {% endif %}
+
+    <form
+        method="post"
+        hx-post="{{ url_for('crm.estimation_set', version_id=version.id) }}"
+        hx-target="#estimation-panel"
+        hx-swap="outerHTML"
+        class="space-y-4 max-w-md"
+    >
+        {{ estimation_form.hidden_tag() }}
+        <div>
+            {{ estimation_form.pricing_model.label(class="block text-sm font-medium text-gray-700 mb-1") }}
+            {{ estimation_form.pricing_model(
+                class="w-full rounded border border-gray-300 px-3 py-2 text-sm",
+                **{"hx-get": url_for('crm.estimation_fields_partial', version_id=version.id),
+                   "hx-target": "#estimation-fields",
+                   "hx-trigger": "change",
+                   "hx-include": "this"}
+            ) }}
+        </div>
+        <div id="estimation-fields">
+            {% with form=estimation_form, pricing_model=estimation_form.pricing_model.data %}
+                {% include "crm/partials/_estimation_fields.html" %}
+            {% endwith %}
+        </div>
+        {{ estimation_form.submit(class="rounded bg-blue-600 text-white text-sm font-medium px-4 py-2 hover:bg-blue-700") }}
+    </form>
+</div>

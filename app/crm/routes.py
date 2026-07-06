@@ -1,13 +1,38 @@
+from decimal import Decimal
+
 from flask import abort, flash, make_response, redirect, render_template, request, url_for
-from flask_login import login_required
+from flask_login import current_user, login_required
 from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 
 from app.crm import crm_bp
-from app.crm.exceptions import LeadStateError, PromotionError
-from app.crm.forms import LeadDiscoveryForm, OrganizationForm, PersonForm
-from app.crm.models import Lead, LeadStatus, Organization, Person, QualificationStatus
-from app.crm.services import close_lead, promote_to_lead
+from app.crm.exceptions import (
+    EstimationLockedError,
+    EstimationValidationError,
+    LeadStateError,
+    PromotionError,
+    ProposalError,
+)
+from app.crm.forms import (
+    EstimationForm,
+    LeadDiscoveryForm,
+    OrganizationForm,
+    PersonForm,
+    ProposalForm,
+    ProposalVersionForm,
+)
+from app.crm.models import (
+    Lead,
+    LeadStatus,
+    Organization,
+    Person,
+    PricingModel,
+    Proposal,
+    ProposalVersion,
+    QualificationStatus,
+    RateUnit,
+)
+from app.crm.services import add_version, close_lead, create_proposal, promote_to_lead, set_estimation
 from app.extensions import db
 
 
@@ -310,3 +335,214 @@ def lead_close(lead_id):
 
     flash("Lead marked as LOST.", "success")
     return redirect(url_for("crm.lead_detail", lead_id=lead.id))
+
+
+# --- Proposals -----------------------------------------------------------
+
+
+def _to_decimal(value):
+    value = (value or "").strip()
+    return Decimal(value) if value else None
+
+
+def _estimation_fields_from_form(form):
+    return {
+        "pricing_model": PricingModel(form.pricing_model.data),
+        "fixed_price": _to_decimal(form.fixed_price.data),
+        "rate_amount": _to_decimal(form.rate_amount.data),
+        "rate_unit": RateUnit(form.rate_unit.data) if form.rate_unit.data else None,
+        "estimated_units": _to_decimal(form.estimated_units.data),
+        "additional_rate": _to_decimal(form.additional_rate.data),
+    }
+
+
+def _estimation_form_for(version):
+    estimation = version.estimation
+    if estimation is None:
+        return EstimationForm(pricing_model=PricingModel.FIXED.value)
+
+    def s(value):
+        return "" if value is None else str(value)
+
+    return EstimationForm(
+        pricing_model=estimation.pricing_model.value,
+        fixed_price=s(estimation.fixed_price),
+        rate_amount=s(estimation.rate_amount),
+        rate_unit=estimation.rate_unit.value if estimation.rate_unit else "",
+        estimated_units=s(estimation.estimated_units),
+        additional_rate=s(estimation.additional_rate),
+    )
+
+
+@crm_bp.route("/leads/<int:lead_id>/proposals/new", methods=["GET", "POST"])
+@login_required
+def proposal_create(lead_id):
+    lead = Lead.query.get_or_404(lead_id)
+    form = ProposalForm()
+    error = None
+
+    if form.validate_on_submit():
+        try:
+            proposal = create_proposal(
+                lead, form.title.data.strip(), form.content.data, current_user
+            )
+        except ProposalError as exc:
+            error = str(exc)
+        else:
+            if request.headers.get("HX-Request"):
+                response = make_response("", 200)
+                response.headers["HX-Redirect"] = url_for(
+                    "crm.proposal_detail", proposal_id=proposal.id
+                )
+                return response
+            flash(f"Created proposal {proposal.title}.", "success")
+            return redirect(url_for("crm.proposal_detail", proposal_id=proposal.id))
+
+    if request.headers.get("HX-Request"):
+        return render_template(
+            "crm/partials/_proposal_form_fields.html", form=form, lead=lead, error=error
+        )
+    return render_template("crm/proposals/form.html", form=form, lead=lead, error=error)
+
+
+@crm_bp.route("/proposals/<int:proposal_id>")
+@login_required
+def proposal_detail(proposal_id):
+    proposal = Proposal.query.get_or_404(proposal_id)
+    version = proposal.versions[-1]
+    return render_template(
+        "crm/proposals/detail.html",
+        proposal=proposal,
+        version=version,
+        estimation_form=_estimation_form_for(version),
+    )
+
+
+@crm_bp.route("/proposals/<int:proposal_id>/versions/<int:version_number>")
+@login_required
+def proposal_version_detail(proposal_id, version_number):
+    proposal = Proposal.query.get_or_404(proposal_id)
+    version = ProposalVersion.query.filter_by(
+        proposal_id=proposal.id, version_number=version_number
+    ).first_or_404()
+
+    template = (
+        "crm/partials/_version_pane.html"
+        if request.headers.get("HX-Request")
+        else "crm/proposals/detail.html"
+    )
+    return render_template(
+        template,
+        proposal=proposal,
+        version=version,
+        estimation_form=_estimation_form_for(version),
+    )
+
+
+@crm_bp.route("/proposals/<int:proposal_id>/revise", methods=["GET", "POST"])
+@login_required
+def proposal_revise(proposal_id):
+    proposal = Proposal.query.get_or_404(proposal_id)
+    source_number = request.args.get("from", type=int)
+    source_version = None
+    if source_number:
+        source_version = ProposalVersion.query.filter_by(
+            proposal_id=proposal.id, version_number=source_number
+        ).first()
+    if source_version is None:
+        source_version = proposal.versions[-1]
+
+    if request.method == "GET":
+        form = ProposalVersionForm(content=source_version.content)
+    else:
+        form = ProposalVersionForm()
+    error = None
+
+    if form.validate_on_submit():
+        try:
+            version = add_version(
+                proposal,
+                form.content.data,
+                current_user,
+                copy_estimation=form.copy_estimation.data,
+            )
+        except ProposalError as exc:
+            error = str(exc)
+        else:
+            if request.headers.get("HX-Request"):
+                response = make_response("", 200)
+                response.headers["HX-Redirect"] = url_for(
+                    "crm.proposal_version_detail",
+                    proposal_id=proposal.id,
+                    version_number=version.version_number,
+                )
+                return response
+            flash(f"Created version {version.version_number}.", "success")
+            return redirect(
+                url_for(
+                    "crm.proposal_version_detail",
+                    proposal_id=proposal.id,
+                    version_number=version.version_number,
+                )
+            )
+
+    context = {
+        "proposal": proposal,
+        "form": form,
+        "source_version": source_version,
+        "error": error,
+    }
+    if request.headers.get("HX-Request"):
+        return render_template("crm/partials/_revise_form_fields.html", **context)
+    return render_template("crm/proposals/revise_form.html", **context)
+
+
+@crm_bp.route("/proposal-versions/<int:version_id>/estimation-fields")
+@login_required
+def estimation_fields_partial(version_id):
+    version = ProposalVersion.query.get_or_404(version_id)
+    pricing_model = request.args.get("pricing_model", PricingModel.FIXED.value)
+    form = EstimationForm(pricing_model=pricing_model)
+    return render_template(
+        "crm/partials/_estimation_fields.html", form=form, pricing_model=pricing_model
+    )
+
+
+@crm_bp.route("/proposal-versions/<int:version_id>/estimation", methods=["POST"])
+@login_required
+def estimation_set(version_id):
+    version = ProposalVersion.query.get_or_404(version_id)
+    form = EstimationForm()
+    error = None
+
+    if form.validate_on_submit():
+        try:
+            set_estimation(version, **_estimation_fields_from_form(form))
+        except (EstimationValidationError, EstimationLockedError) as exc:
+            error = str(exc)
+    else:
+        error = "; ".join(
+            f"{field}: {', '.join(errs)}" for field, errs in form.errors.items()
+        )
+
+    proposal = version.proposal
+    if request.headers.get("HX-Request"):
+        return render_template(
+            "crm/partials/_estimation_panel.html",
+            proposal=proposal,
+            version=version,
+            estimation_form=form,
+            error=error,
+        )
+
+    if error:
+        flash(error, "error")
+    else:
+        flash("Estimation saved.", "success")
+    return redirect(
+        url_for(
+            "crm.proposal_version_detail",
+            proposal_id=proposal.id,
+            version_number=version.version_number,
+        )
+    )
