@@ -1,9 +1,11 @@
+from datetime import datetime, timezone
 from decimal import Decimal
 
 from flask import abort, flash, make_response, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import joinedload
 
 from app.crm import crm_bp
 from app.crm.exceptions import (
@@ -389,6 +391,74 @@ def lead_close(lead_id):
 
     flash("Lead marked as LOST.", "success")
     return redirect(url_for("crm.lead_detail", lead_id=lead.id))
+
+
+# --- Pipeline board (read-only) -----------------------------------------
+
+
+def _lead_age_days(created_at):
+    now = datetime.now(timezone.utc)
+    if created_at.tzinfo is None:  # SQLite returns naive datetimes
+        now = now.replace(tzinfo=None)
+    return (now - created_at).days
+
+
+def _pipeline_columns():
+    """Card data for every lead in a constant three queries — one for leads
+    (person+org eager-loaded), one for proposal titles, one for open offers.
+    Never one query per card."""
+    leads = (
+        Lead.query.options(joinedload(Lead.person).joinedload(Person.organization))
+        .order_by(Lead.created_at.desc())
+        .all()
+    )
+
+    latest_proposal_title = {}
+    for lead_id, title in (
+        db.session.query(Proposal.lead_id, Proposal.title).order_by(Proposal.id).all()
+    ):
+        latest_proposal_title[lead_id] = title  # ordered by id: last one wins
+
+    open_offer_status = {}
+    for lead_id, status in (
+        db.session.query(Proposal.lead_id, Offer.status)
+        .join(ProposalVersion, ProposalVersion.proposal_id == Proposal.id)
+        .join(Offer, Offer.proposal_version_id == ProposalVersion.id)
+        .filter(Offer.status.in_((OfferStatus.DRAFT, OfferStatus.SENT)))
+        .all()
+    ):
+        open_offer_status[lead_id] = status
+
+    columns = {status: [] for status in LeadStatus}
+    for lead in leads:
+        columns[lead.status].append(
+            {
+                "lead": lead,
+                "proposal_title": latest_proposal_title.get(lead.id),
+                "open_offer_status": open_offer_status.get(lead.id),
+                "age_days": _lead_age_days(lead.created_at),
+            }
+        )
+    return columns
+
+
+@crm_bp.route("/pipeline")
+@login_required
+def pipeline():
+    focus = request.args.get("status", "").strip()
+    try:
+        focus_status = LeadStatus(focus) if focus else None
+    except ValueError:
+        focus_status = None
+    show_closed = request.args.get("show_closed") == "1"
+
+    return render_template(
+        "crm/pipeline.html",
+        columns=_pipeline_columns(),
+        statuses=list(LeadStatus),
+        focus_status=focus_status,
+        show_closed=show_closed,
+    )
 
 
 # --- Proposals -----------------------------------------------------------

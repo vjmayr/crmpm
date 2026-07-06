@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block title %}Pipeline — CRMPM{% endblock %}
+
+{% block content %}
+{#
+  This board is strictly READ-ONLY — deliberately no drag-and-drop, and not
+  only because it would need custom JS: lead status is service-owned
+  (CLAUDE.md rule #7), so a draggable card would be an invitation to an
+  illegal transition. The board is a window, not a control surface.
+#}
+{% set column_styles = {
+    "OPEN": "bg-blue-50 border-blue-200",
+    "PROPOSAL": "bg-yellow-50 border-yellow-200",
+    "OFFER_SENT": "bg-purple-50 border-purple-200",
+    "WON": "bg-green-50 border-green-200",
+    "LOST": "bg-gray-100 border-gray-200",
+} %}
+{% set offer_badge_classes = {
+    "DRAFT": "bg-gray-100 text-gray-600",
+    "SENT": "bg-blue-100 text-blue-800",
+} %}
+<div class="flex items-center justify-between mb-6 max-w-6xl">
+    <h1 class="text-2xl font-semibold text-gray-900">Pipeline</h1>
+    <div class="flex items-center gap-4 text-sm">
+        {% if focus_status %}
+        <a href="{{ url_for('crm.pipeline') }}" class="text-blue-600 hover:underline">Show all columns</a>
+        {% elif show_closed %}
+        <a href="{{ url_for('crm.pipeline') }}" class="text-blue-600 hover:underline">Hide closed</a>
+        {% else %}
+        <a href="{{ url_for('crm.pipeline', show_closed=1) }}" class="text-blue-600 hover:underline">Show closed (Won / Lost)</a>
+        {% endif %}
+    </div>
+</div>
+
+<div class="flex gap-4 items-start max-w-6xl">
+    {% for status in statuses %}
+    {% set is_closed = status.value in ("WON", "LOST") %}
+    {% if (focus_status and status == focus_status) or (not focus_status and (not is_closed or show_closed)) %}
+    <div id="col-{{ status.value }}" class="flex-1 min-w-0 rounded-lg border {{ column_styles[status.value] }} {{ 'opacity-60' if is_closed else '' }}">
+        <div class="px-3 py-2 border-b border-inherit">
+            <span class="text-xs font-semibold text-gray-600 uppercase tracking-wide">{{ status.value.replace("_", " ").title() }}</span>
+            <span class="ml-1 text-xs text-gray-400">({{ columns[status]|length }})</span>
+        </div>
+        <div class="p-2 space-y-2">
+            {% for card in columns[status] %}
+            <a href="{{ url_for('crm.lead_detail', lead_id=card.lead.id) }}" class="block bg-white rounded border border-gray-200 p-3 hover:border-blue-400">
+                <div class="flex items-center justify-between">
+                    <span class="text-sm font-medium text-gray-900">{{ card.lead.person.name }}</span>
+                    <span class="text-xs text-gray-400">{{ card.age_days }}d</span>
+                </div>
+                <p class="text-xs text-gray-500">{{ card.lead.person.organization.name if card.lead.person.organization else "no organization" }}</p>
+                {% if card.proposal_title %}
+                <p class="text-xs text-gray-600 mt-1 truncate">{{ card.proposal_title }}</p>
+                {% endif %}
+                {% if card.open_offer_status %}
+                <span class="mt-1 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium {{ offer_badge_classes[card.open_offer_status.value] }}">Offer {{ card.open_offer_status.value.title() }}</span>
+                {% endif %}
+            </a>
+            {% else %}
+            <p class="text-xs text-gray-400 p-2">
+                Nothing here.
+                {% if status.value == "OPEN" %}
+                <a href="{{ url_for('crm.person_list') }}" class="text-blue-600 hover:underline">Promote a qualified person</a>
+                {% endif %}
+            </p>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+    {% endfor %}
+</div>
+{% endblock %}
