@@ -1,11 +1,13 @@
-from flask import abort, flash, redirect, render_template, request, url_for
+from flask import abort, flash, make_response, redirect, render_template, request, url_for
 from flask_login import login_required
 from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 
 from app.crm import crm_bp
-from app.crm.forms import OrganizationForm, PersonForm
-from app.crm.models import Organization, Person, QualificationStatus
+from app.crm.exceptions import LeadStateError, PromotionError
+from app.crm.forms import LeadDiscoveryForm, OrganizationForm, PersonForm
+from app.crm.models import Lead, LeadStatus, Organization, Person, QualificationStatus
+from app.crm.services import close_lead, promote_to_lead
 from app.extensions import db
 
 
@@ -215,3 +217,96 @@ def person_update_qualification(person_id):
     return render_template(
         "crm/partials/_person_row.html", person=person, statuses=list(QualificationStatus)
     )
+
+
+@crm_bp.route("/people/<int:person_id>/promote", methods=["POST"])
+@login_required
+def person_promote(person_id):
+    person = Person.query.get_or_404(person_id)
+    try:
+        lead = promote_to_lead(person)
+    except PromotionError as exc:
+        if request.headers.get("HX-Request"):
+            return render_template(
+                "crm/partials/_promote_widget.html", person=person, error=str(exc)
+            )
+        flash(str(exc), "error")
+        return redirect(url_for("crm.person_detail", person_id=person.id))
+
+    if request.headers.get("HX-Request"):
+        response = make_response("", 200)
+        response.headers["HX-Redirect"] = url_for("crm.lead_detail", lead_id=lead.id)
+        return response
+
+    flash(f"Promoted {person.name} to a lead.", "success")
+    return redirect(url_for("crm.lead_detail", lead_id=lead.id))
+
+
+# --- Leads -------------------------------------------------------------
+
+
+@crm_bp.route("/leads")
+@login_required
+def lead_list():
+    search = request.args.get("search", "").strip()
+    status = request.args.get("status", "").strip()
+
+    query = Lead.query.join(Person, Lead.person_id == Person.id).outerjoin(
+        Organization, Person.organization_id == Organization.id
+    )
+    if search:
+        like = f"%{search}%"
+        query = query.filter(or_(Person.name.ilike(like), Organization.name.ilike(like)))
+    if status:
+        try:
+            query = query.filter(Lead.status == LeadStatus(status))
+        except ValueError:
+            status = ""
+
+    leads = query.order_by(Lead.created_at.desc()).all()
+
+    template = (
+        "crm/partials/_lead_table.html"
+        if request.headers.get("HX-Request")
+        else "crm/leads/list.html"
+    )
+    return render_template(
+        template, leads=leads, search=search, status=status, statuses=list(LeadStatus)
+    )
+
+
+@crm_bp.route("/leads/<int:lead_id>", methods=["GET", "POST"])
+@login_required
+def lead_detail(lead_id):
+    lead = Lead.query.get_or_404(lead_id)
+    form = LeadDiscoveryForm(obj=lead)
+    if form.validate_on_submit():
+        lead.source = form.source.data.strip() or None
+        lead.timeline = form.timeline.data.strip() or None
+        lead.budget_range = form.budget_range.data.strip() or None
+        lead.pain_points = form.pain_points.data.strip() or None
+        lead.discovery_notes = form.discovery_notes.data.strip() or None
+        db.session.commit()
+        flash("Updated discovery notes.", "success")
+        return redirect(url_for("crm.lead_detail", lead_id=lead.id))
+
+    return render_template("crm/leads/detail.html", lead=lead, form=form)
+
+
+@crm_bp.route("/leads/<int:lead_id>/close", methods=["POST"])
+@login_required
+def lead_close(lead_id):
+    lead = Lead.query.get_or_404(lead_id)
+    try:
+        close_lead(lead)
+    except LeadStateError as exc:
+        if request.headers.get("HX-Request"):
+            return render_template("crm/partials/_lead_status_block.html", lead=lead, error=str(exc))
+        flash(str(exc), "error")
+        return redirect(url_for("crm.lead_detail", lead_id=lead.id))
+
+    if request.headers.get("HX-Request"):
+        return render_template("crm/partials/_lead_status_block.html", lead=lead)
+
+    flash("Lead marked as LOST.", "success")
+    return redirect(url_for("crm.lead_detail", lead_id=lead.id))

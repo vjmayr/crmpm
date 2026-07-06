@@ -1,0 +1,15 @@
+<div id="promote-container">
+    {% if error %}
+    <p class="text-sm text-red-600 mb-2">{{ error }}</p>
+    {% endif %}
+    {% if person.lead %}
+    <a href="{{ url_for('crm.lead_detail', lead_id=person.lead.id) }}" class="text-sm text-blue-600 hover:underline">View lead →</a>
+    {% elif person.qualification_status.value == "QUALIFIED" %}
+    <button
+        hx-post="{{ url_for('crm.person_promote', person_id=person.id) }}"
+        hx-target="#promote-container"
+        hx-swap="outerHTML"
+        class="rounded bg-blue-600 text-white text-sm font-medium px-4 py-2 hover:bg-blue-700"
+    >Promote to Lead</button>
+    {% endif %}
+</div>

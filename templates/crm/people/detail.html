@@ -5,7 +5,10 @@
 {% block content %}
 <div class="flex items-center justify-between mb-4">
     <h1 class="text-2xl font-semibold text-gray-900">{{ person.name }}</h1>
-    <a href="{{ url_for('crm.person_edit', person_id=person.id) }}" class="rounded border border-gray-300 text-sm font-medium px-4 py-2 hover:bg-gray-50">Edit</a>
+    <div class="flex items-center gap-3">
+        {% include "crm/partials/_promote_widget.html" %}
+        <a href="{{ url_for('crm.person_edit', person_id=person.id) }}" class="rounded border border-gray-300 text-sm font-medium px-4 py-2 hover:bg-gray-50">Edit</a>
+    </div>
 </div>
 
 <div class="mb-6">
