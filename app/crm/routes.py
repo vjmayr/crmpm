@@ -10,6 +10,8 @@ from app.crm.exceptions import (
     EstimationLockedError,
     EstimationValidationError,
     LeadStateError,
+    OfferConflictError,
+    OfferStateError,
     PromotionError,
     ProposalError,
 )
@@ -24,6 +26,8 @@ from app.crm.forms import (
 from app.crm.models import (
     Lead,
     LeadStatus,
+    Offer,
+    OfferStatus,
     Organization,
     Person,
     PricingModel,
@@ -32,8 +36,24 @@ from app.crm.models import (
     QualificationStatus,
     RateUnit,
 )
-from app.crm.services import add_version, close_lead, create_proposal, promote_to_lead, set_estimation
+from app.crm.services import (
+    add_version,
+    close_lead,
+    create_offer,
+    create_proposal,
+    deny_offer,
+    estimation_is_locked,
+    promote_to_lead,
+    send_offer,
+    set_estimation,
+)
 from app.extensions import db
+from app.services.offer_acceptance import (
+    OrganizationRequiredError,
+    accept_offer,
+    project_for_lead,
+    project_for_offer,
+)
 
 
 @crm_bp.route("/")
@@ -47,6 +67,31 @@ def _populate_organization_choices(form):
     form.organization_id.choices = [("", "— Unassigned —")] + [
         (str(org.id), org.name) for org in organizations
     ]
+
+
+def _open_offer_for_lead(lead):
+    return (
+        Offer.query.join(ProposalVersion, Offer.proposal_version_id == ProposalVersion.id)
+        .join(Proposal, ProposalVersion.proposal_id == Proposal.id)
+        .filter(
+            Proposal.lead_id == lead.id,
+            Offer.status.in_((OfferStatus.DRAFT, OfferStatus.SENT)),
+        )
+        .first()
+    )
+
+
+def _offers_for_proposal(proposal):
+    return (
+        Offer.query.join(ProposalVersion, Offer.proposal_version_id == ProposalVersion.id)
+        .filter(ProposalVersion.proposal_id == proposal.id)
+        .order_by(Offer.id)
+        .all()
+    )
+
+
+def _is_locked(version):
+    return version.estimation is not None and estimation_is_locked(version.estimation)
 
 
 # --- Organizations ---------------------------------------------------------
@@ -315,7 +360,16 @@ def lead_detail(lead_id):
         flash("Updated discovery notes.", "success")
         return redirect(url_for("crm.lead_detail", lead_id=lead.id))
 
-    return render_template("crm/leads/detail.html", lead=lead, form=form)
+    proposal_offers = {
+        proposal.id: _offers_for_proposal(proposal) for proposal in lead.proposals
+    }
+    return render_template(
+        "crm/leads/detail.html",
+        lead=lead,
+        form=form,
+        proposal_offers=proposal_offers,
+        won_project=project_for_lead(lead),
+    )
 
 
 @crm_bp.route("/leads/<int:lead_id>/close", methods=["POST"])
@@ -415,6 +469,9 @@ def proposal_detail(proposal_id):
         proposal=proposal,
         version=version,
         estimation_form=_estimation_form_for(version),
+        locked=_is_locked(version),
+        open_offer=_open_offer_for_lead(proposal.lead),
+        offers=_offers_for_proposal(proposal),
     )
 
 
@@ -436,6 +493,9 @@ def proposal_version_detail(proposal_id, version_number):
         proposal=proposal,
         version=version,
         estimation_form=_estimation_form_for(version),
+        locked=_is_locked(version),
+        open_offer=_open_offer_for_lead(proposal.lead),
+        offers=_offers_for_proposal(proposal),
     )
 
 
@@ -533,6 +593,7 @@ def estimation_set(version_id):
             version=version,
             estimation_form=form,
             error=error,
+            locked=_is_locked(version),
         )
 
     if error:
@@ -546,3 +607,120 @@ def estimation_set(version_id):
             version_number=version.version_number,
         )
     )
+
+
+# --- Offers --------------------------------------------------------------
+
+
+@crm_bp.route("/proposal-versions/<int:version_id>/offer", methods=["POST"])
+@login_required
+def offer_create(version_id):
+    version = ProposalVersion.query.get_or_404(version_id)
+    error = None
+    try:
+        offer = create_offer(version)
+    except (OfferStateError, OfferConflictError) as exc:
+        error = str(exc)
+    else:
+        if request.headers.get("HX-Request"):
+            response = make_response("", 200)
+            response.headers["HX-Redirect"] = url_for("crm.offer_detail", offer_id=offer.id)
+            return response
+        flash(f"Created offer for version {version.version_number}.", "success")
+        return redirect(url_for("crm.offer_detail", offer_id=offer.id))
+
+    if request.headers.get("HX-Request"):
+        return render_template(
+            "crm/partials/_create_offer_widget.html",
+            version=version,
+            open_offer=_open_offer_for_lead(version.proposal.lead),
+            error=error,
+        )
+    flash(error, "error")
+    return redirect(
+        url_for(
+            "crm.proposal_version_detail",
+            proposal_id=version.proposal_id,
+            version_number=version.version_number,
+        )
+    )
+
+
+@crm_bp.route("/offers/<int:offer_id>")
+@login_required
+def offer_detail(offer_id):
+    offer = Offer.query.get_or_404(offer_id)
+    project = project_for_offer(offer) if offer.status == OfferStatus.ACCEPTED else None
+    return render_template("crm/offers/detail.html", offer=offer, project=project)
+
+
+@crm_bp.route("/offers/<int:offer_id>/send", methods=["POST"])
+@login_required
+def offer_send(offer_id):
+    offer = Offer.query.get_or_404(offer_id)
+    error = None
+    try:
+        send_offer(offer)
+    except OfferStateError as exc:
+        error = str(exc)
+
+    if request.headers.get("HX-Request"):
+        return render_template("crm/partials/_offer_status_block.html", offer=offer, error=error)
+    if error:
+        flash(error, "error")
+    else:
+        flash("Offer sent.", "success")
+    return redirect(url_for("crm.offer_detail", offer_id=offer.id))
+
+
+@crm_bp.route("/offers/<int:offer_id>/deny", methods=["POST"])
+@login_required
+def offer_deny(offer_id):
+    offer = Offer.query.get_or_404(offer_id)
+    error = None
+    try:
+        deny_offer(offer)
+    except OfferStateError as exc:
+        error = str(exc)
+
+    if request.headers.get("HX-Request"):
+        return render_template("crm/partials/_offer_status_block.html", offer=offer, error=error)
+    if error:
+        flash(error, "error")
+    else:
+        flash("Offer denied.", "success")
+    return redirect(url_for("crm.offer_detail", offer_id=offer.id))
+
+
+@crm_bp.route("/offers/<int:offer_id>/accept", methods=["POST"])
+@login_required
+def offer_accept(offer_id):
+    offer = Offer.query.get_or_404(offer_id)
+    error = None
+    show_org_prompt = False
+    try:
+        project = accept_offer(offer, current_user)
+    except OrganizationRequiredError as exc:
+        error = str(exc)
+        show_org_prompt = True
+    except OfferStateError as exc:
+        error = str(exc)
+    else:
+        if request.headers.get("HX-Request"):
+            response = make_response("", 200)
+            response.headers["HX-Redirect"] = url_for(
+                "projects.project_detail", project_id=project.id
+            )
+            return response
+        flash("Offer accepted — project created.", "success")
+        return redirect(url_for("projects.project_detail", project_id=project.id))
+
+    if request.headers.get("HX-Request"):
+        return render_template(
+            "crm/partials/_offer_status_block.html",
+            offer=offer,
+            error=error,
+            show_org_prompt=show_org_prompt,
+        )
+    flash(error, "error")
+    return redirect(url_for("crm.offer_detail", offer_id=offer.id))
