@@ -1,0 +1,133 @@
+{% set task_status_classes = {
+    "TODO": "bg-gray-100 text-gray-600",
+    "IN_PROGRESS": "bg-yellow-100 text-yellow-800",
+    "DONE": "bg-green-100 text-green-800",
+} %}
+<div id="structure-board">
+    <h2 class="text-lg font-semibold text-gray-900 mb-3">Structure</h2>
+    {% if board_error %}
+    <p class="text-sm text-red-600 mb-3">{{ board_error }}</p>
+    {% endif %}
+
+    {% for entry in rollup.sections %}
+    {% set section = entry.section %}
+    <div class="border border-gray-200 rounded-lg mb-4">
+        <div class="flex items-center gap-2 bg-gray-50 border-b border-gray-200 px-4 py-2 rounded-t-lg">
+            <form hx-post="{{ url_for('projects.section_update', section_id=section.id) }}" hx-target="#project-body" class="flex items-center gap-2 flex-1">
+                <input name="name" value="{{ section.name }}" class="rounded border border-gray-300 text-sm font-semibold px-2 py-1 flex-1 max-w-xs">
+                <button type="submit" class="text-xs text-gray-500 hover:text-gray-700">Rename</button>
+            </form>
+            <form hx-post="{{ url_for('projects.section_move', section_id=section.id) }}" hx-target="#project-body" class="inline">
+                <button name="direction" value="up" class="text-gray-400 hover:text-gray-700 px-1" title="Move up">↑</button>
+            </form>
+            <form hx-post="{{ url_for('projects.section_move', section_id=section.id) }}" hx-target="#project-body" class="inline">
+                <button name="direction" value="down" class="text-gray-400 hover:text-gray-700 px-1" title="Move down">↓</button>
+            </form>
+            {% if section.work_packages %}
+            <button disabled title="Delete its work packages first" class="text-gray-300 cursor-not-allowed px-1">✕</button>
+            {% else %}
+            <form hx-post="{{ url_for('projects.section_delete', section_id=section.id) }}" hx-target="#project-body" hx-confirm="Delete section '{{ section.name }}'?" class="inline">
+                <button class="text-red-400 hover:text-red-600 px-1" title="Delete section">✕</button>
+            </form>
+            {% endif %}
+        </div>
+
+        <div class="p-4 space-y-4">
+            {% for wp in section.work_packages|sort(attribute="position") %}
+            <div class="border border-gray-200 rounded p-3">
+                <div class="flex items-center gap-2 mb-2">
+                    <form hx-post="{{ url_for('projects.work_package_update', wp_id=wp.id) }}" hx-target="#project-body" class="flex items-center gap-2 flex-1">
+                        <input name="name" value="{{ wp.name }}" class="rounded border border-gray-300 text-sm font-medium px-2 py-1 flex-1 max-w-xs">
+                        <label class="text-xs text-gray-500">est. h
+                            <input name="estimated_hours" value="{{ wp.estimated_hours if wp.estimated_hours is not none else '' }}" class="w-20 rounded border border-gray-300 text-sm px-2 py-1">
+                        </label>
+                        <button type="submit" class="text-xs text-gray-500 hover:text-gray-700">Save</button>
+                    </form>
+                    <form hx-post="{{ url_for('projects.work_package_move', wp_id=wp.id) }}" hx-target="#project-body" class="inline">
+                        <button name="direction" value="up" class="text-gray-400 hover:text-gray-700 px-1" title="Move up">↑</button>
+                    </form>
+                    <form hx-post="{{ url_for('projects.work_package_move', wp_id=wp.id) }}" hx-target="#project-body" class="inline">
+                        <button name="direction" value="down" class="text-gray-400 hover:text-gray-700 px-1" title="Move down">↓</button>
+                    </form>
+                    {% if wp.tasks %}
+                    <button disabled title="Delete its tasks first" class="text-gray-300 cursor-not-allowed px-1">✕</button>
+                    {% else %}
+                    <form hx-post="{{ url_for('projects.work_package_delete', wp_id=wp.id) }}" hx-target="#project-body" hx-confirm="Delete work package '{{ wp.name }}'?" class="inline">
+                        <button class="text-red-400 hover:text-red-600 px-1" title="Delete work package">✕</button>
+                    </form>
+                    {% endif %}
+                </div>
+
+                <div class="space-y-1">
+                    {% for task in wp.tasks|sort(attribute="position") %}
+                    <div class="flex items-center gap-2 pl-4 py-1 border-l-2 {{ 'border-green-300' if task.status.value == 'DONE' else 'border-gray-200' }}">
+                        <form hx-post="{{ url_for('projects.task_update', task_id=task.id) }}" hx-target="#project-body" class="flex items-center gap-2 flex-1">
+                            <input name="title" value="{{ task.title }}" class="rounded border border-gray-300 text-sm px-2 py-1 flex-1 max-w-xs">
+                            <select name="status" class="rounded border border-gray-300 text-xs px-1 py-1 {{ task_status_classes[task.status.value] }}">
+                                <option value="TODO" {{ "selected" if task.status.value == "TODO" else "" }}>Todo</option>
+                                <option value="IN_PROGRESS" {{ "selected" if task.status.value == "IN_PROGRESS" else "" }}>In Progress</option>
+                                <option value="DONE" {{ "selected" if task.status.value == "DONE" else "" }}>Done</option>
+                            </select>
+                            <select name="assignee_id" class="rounded border border-gray-300 text-xs px-1 py-1">
+                                <option value="">— unassigned —</option>
+                                {% for user in users %}
+                                <option value="{{ user.id }}" {{ "selected" if task.assignee_id == user.id else "" }}>{{ user.name }}</option>
+                                {% endfor %}
+                            </select>
+                            <label class="text-xs text-gray-500">h
+                                <input name="estimated_hours" value="{{ task.estimated_hours if task.estimated_hours is not none else '' }}" class="w-16 rounded border border-gray-300 text-sm px-2 py-1">
+                            </label>
+                            <button type="submit" class="text-xs text-gray-500 hover:text-gray-700">Save</button>
+                        </form>
+                        <form hx-post="{{ url_for('projects.task_move', task_id=task.id) }}" hx-target="#project-body" class="inline">
+                            <button name="direction" value="up" class="text-gray-400 hover:text-gray-700 px-1" title="Move up">↑</button>
+                        </form>
+                        <form hx-post="{{ url_for('projects.task_move', task_id=task.id) }}" hx-target="#project-body" class="inline">
+                            <button name="direction" value="down" class="text-gray-400 hover:text-gray-700 px-1" title="Move down">↓</button>
+                        </form>
+                        <form hx-post="{{ url_for('projects.task_delete', task_id=task.id) }}" hx-target="#project-body" hx-confirm="Delete task '{{ task.title }}'?" class="inline">
+                            <button class="text-red-400 hover:text-red-600 px-1" title="Delete task">✕</button>
+                        </form>
+                    </div>
+                    {% endfor %}
+                    <form hx-post="{{ url_for('projects.task_create', wp_id=wp.id) }}" hx-target="#project-body" class="flex items-center gap-2 pl-4 pt-1">
+                        <input name="title" placeholder="New task…" class="rounded border border-gray-300 text-sm px-2 py-1 flex-1 max-w-xs">
+                        <label class="text-xs text-gray-500">h
+                            <input name="estimated_hours" class="w-16 rounded border border-gray-300 text-sm px-2 py-1">
+                        </label>
+                        <button type="submit" class="text-xs text-blue-600 hover:text-blue-800 font-medium">+ Add task</button>
+                    </form>
+                </div>
+            </div>
+            {% endfor %}
+
+            <form hx-post="{{ url_for('projects.work_package_create', section_id=section.id) }}" hx-target="#project-body" class="flex items-center gap-2">
+                <input name="name" placeholder="New work package…" class="rounded border border-gray-300 text-sm px-2 py-1 flex-1 max-w-xs">
+                <label class="text-xs text-gray-500">est. h
+                    <input name="estimated_hours" class="w-20 rounded border border-gray-300 text-sm px-2 py-1">
+                </label>
+                <button type="submit" class="text-xs text-blue-600 hover:text-blue-800 font-medium">+ Add work package</button>
+            </form>
+        </div>
+
+        <div class="flex gap-6 bg-gray-50 border-t border-gray-200 px-4 py-2 rounded-b-lg text-xs text-gray-600">
+            <span>WP estimates: <strong>{{ entry.wp_hours }}h</strong>{% if entry.unestimated_wps %} <span class="text-amber-600">({{ entry.unestimated_wps }} unestimated)</span>{% endif %}</span>
+            <span>Task estimates: <strong>{{ entry.task_hours }}h</strong>{% if entry.unestimated_tasks %} <span class="text-amber-600">({{ entry.unestimated_tasks }} unestimated)</span>{% endif %}</span>
+        </div>
+    </div>
+    {% endfor %}
+
+    <form hx-post="{{ url_for('projects.section_create', project_id=project.id) }}" hx-target="#project-body" class="flex items-center gap-2 mb-6">
+        <input name="name" placeholder="New section…" class="rounded border border-gray-300 text-sm px-2 py-1 flex-1 max-w-xs">
+        <button type="submit" class="text-sm text-blue-600 hover:text-blue-800 font-medium">+ Add section</button>
+    </form>
+
+    {% set totals = rollup.project %}
+    <div class="border border-gray-300 rounded-lg bg-gray-50 px-4 py-3 max-w-xl">
+        <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Project totals</p>
+        <div class="flex gap-6 text-sm text-gray-700">
+            <span>WP estimates: <strong>{{ totals.wp_hours }}h</strong>{% if totals.unestimated_wps %} <span class="text-amber-600">({{ totals.unestimated_wps }} unestimated)</span>{% endif %}</span>
+            <span>Task estimates: <strong>{{ totals.task_hours }}h</strong>{% if totals.unestimated_tasks %} <span class="text-amber-600">({{ totals.unestimated_tasks }} unestimated)</span>{% endif %}</span>
+        </div>
+    </div>
+</div>

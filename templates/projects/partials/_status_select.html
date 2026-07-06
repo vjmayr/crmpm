@@ -1,0 +1,13 @@
+<select
+    id="project-status-select"
+    name="status"
+    class="rounded border border-gray-300 text-sm px-2 py-1"
+    hx-post="{{ url_for('projects.project_status', project_id=project.id) }}"
+    hx-trigger="change"
+    hx-target="#project-status-select"
+    hx-swap="outerHTML"
+>
+    {% for s in statuses %}
+    <option value="{{ s.value }}" {{ "selected" if project.status == s else "" }}>{{ s.value.replace("_", " ").title() }}</option>
+    {% endfor %}
+</select>

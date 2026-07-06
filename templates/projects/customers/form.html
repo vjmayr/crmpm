@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+{% block title %}New customer — CRMPM{% endblock %}
+
+{% block content %}
+<h1 class="text-2xl font-semibold text-gray-900 mb-6">New customer</h1>
+
+<form method="post" class="max-w-lg space-y-4">
+    {{ form.hidden_tag() }}
+    <div>
+        {{ form.organization_id.label(class="block text-sm font-medium text-gray-700 mb-1") }}
+        {{ form.organization_id(class="w-full rounded border border-gray-300 px-3 py-2 text-sm") }}
+        {% for error in form.organization_id.errors %}
+        <p class="mt-1 text-sm text-red-600">{{ error }}</p>
+        {% endfor %}
+    </div>
+    <div>
+        {{ form.type.label(class="block text-sm font-medium text-gray-700 mb-1") }}
+        {{ form.type(class="w-full rounded border border-gray-300 px-3 py-2 text-sm") }}
+        <p class="mt-1 text-xs text-gray-500">Pipeline acceptances always create External customers; Internal customers are created here.</p>
+    </div>
+    {{ form.submit(class="rounded bg-blue-600 text-white text-sm font-medium px-4 py-2 hover:bg-blue-700") }}
+</form>
+{% endblock %}

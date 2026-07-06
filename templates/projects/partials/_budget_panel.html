@@ -1,0 +1,82 @@
+<div id="budget-panel" class="border border-gray-200 rounded-lg p-4 max-w-lg">
+    <h2 class="text-lg font-semibold text-gray-900 mb-3">Budget</h2>
+    {% if budget_error %}
+    <p class="text-sm text-red-600 mb-3">{{ budget_error }}</p>
+    {% endif %}
+
+    {% set totals = rollup.project %}
+    <dl class="grid grid-cols-2 gap-2 text-sm mb-4">
+        <dt class="text-gray-500">Type</dt>
+        <dd>
+            <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium {{ 'bg-orange-100 text-orange-800' if project.budget_type.value == 'HARD' else 'bg-blue-100 text-blue-800' }}">{{ project.budget_type.value.title() }}</span>
+            {% if project.offer_id %}
+            <span class="ml-1 text-xs text-gray-400">from accepted offer — read-only</span>
+            {% endif %}
+        </dd>
+        {% if project.budget_type.value == "HARD" %}
+        <dt class="text-gray-500">Over-hours policy</dt>
+        <dd class="text-gray-900">{{ project.over_hours_policy.value.replace("_", " ").title() }}</dd>
+        <dt class="text-gray-500">Over rate</dt>
+        <dd class="text-gray-900">{{ project.over_rate }}</dd>
+        {% endif %}
+        <dt class="text-gray-500">Budget hours</dt>
+        <dd class="text-gray-900">{{ project.budget_hours if project.budget_hours is not none else "—, set manually" }}</dd>
+    </dl>
+
+    <h3 class="text-sm font-semibold text-gray-900 mb-2">Comparison</h3>
+    {% if totals.budget_hours is not none %}
+    <dl class="grid grid-cols-2 gap-2 text-sm mb-4">
+        <dt class="text-gray-500">vs WP estimates ({{ totals.wp_hours }}h)</dt>
+        <dd class="{{ 'text-green-700' if totals.wp_delta >= 0 else 'text-red-700' }}">
+            {{ "%+.2f"|format(totals.wp_delta) }}h {{ "within budget" if totals.wp_delta >= 0 else "over budget" }}
+        </dd>
+        <dt class="text-gray-500">vs Task estimates ({{ totals.task_hours }}h)</dt>
+        <dd class="{{ 'text-green-700' if totals.task_delta >= 0 else 'text-red-700' }}">
+            {{ "%+.2f"|format(totals.task_delta) }}h {{ "within budget" if totals.task_delta >= 0 else "over budget" }}
+        </dd>
+    </dl>
+    {% else %}
+    <p class="text-sm text-gray-400 mb-4">No budget set — nothing to compare against.</p>
+    {% endif %}
+
+    {% if project.offer_id is none %}
+    <form hx-post="{{ url_for('projects.project_budget', project_id=project.id) }}" hx-target="#budget-panel" hx-swap="outerHTML" class="space-y-2 border-t border-gray-100 pt-3">
+        <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Edit budget</p>
+        <div class="flex flex-wrap gap-2 items-end">
+            <label class="text-xs text-gray-500">Type
+                <select name="budget_type" class="block rounded border border-gray-300 text-sm px-2 py-1">
+                    <option value="SOFT" {{ "selected" if project.budget_type.value == "SOFT" else "" }}>Soft</option>
+                    <option value="HARD" {{ "selected" if project.budget_type.value == "HARD" else "" }}>Hard</option>
+                </select>
+            </label>
+            <label class="text-xs text-gray-500">Hours
+                <input name="budget_hours" value="{{ project.budget_hours if project.budget_hours is not none else '' }}" class="block w-24 rounded border border-gray-300 text-sm px-2 py-1">
+            </label>
+            <label class="text-xs text-gray-500">Policy
+                <select name="over_hours_policy" class="block rounded border border-gray-300 text-sm px-2 py-1">
+                    <option value="">—</option>
+                    <option value="BLOCK" {{ "selected" if project.over_hours_policy and project.over_hours_policy.value == "BLOCK" else "" }}>Block</option>
+                    <option value="BILL_AT_RATE" {{ "selected" if project.over_hours_policy and project.over_hours_policy.value == "BILL_AT_RATE" else "" }}>Bill At Rate</option>
+                </select>
+            </label>
+            <label class="text-xs text-gray-500">Over rate
+                <input name="over_rate" value="{{ project.over_rate if project.over_rate is not none else '' }}" class="block w-24 rounded border border-gray-300 text-sm px-2 py-1">
+            </label>
+            <button type="submit" class="rounded bg-blue-600 text-white text-sm font-medium px-3 py-1 hover:bg-blue-700">Save</button>
+        </div>
+    </form>
+    {% elif project.budget_type.value == "SOFT" %}
+    <form hx-post="{{ url_for('projects.project_budget', project_id=project.id) }}" hx-target="#budget-panel" hx-swap="outerHTML" class="space-y-2 border-t border-gray-100 pt-3">
+        <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Internal planning hours</p>
+        <div class="flex gap-2 items-end">
+            <label class="text-xs text-gray-500">Hours
+                <input name="budget_hours" value="{{ project.budget_hours if project.budget_hours is not none else '' }}" class="block w-24 rounded border border-gray-300 text-sm px-2 py-1">
+            </label>
+            <button type="submit" class="rounded bg-blue-600 text-white text-sm font-medium px-3 py-1 hover:bg-blue-700">Save</button>
+        </div>
+        <p class="text-xs text-gray-400">Contract fields are read-only; these hours are internal planning data.</p>
+    </form>
+    {% else %}
+    <p class="text-xs text-gray-400 border-t border-gray-100 pt-3">All budget fields record the accepted contract and are read-only.</p>
+    {% endif %}
+</div>
