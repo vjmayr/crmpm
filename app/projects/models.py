@@ -25,6 +25,12 @@ class ProjectStatus(enum.Enum):
     ARCHIVED = "ARCHIVED"
 
 
+class TaskStatus(enum.Enum):
+    TODO = "TODO"
+    IN_PROGRESS = "IN_PROGRESS"
+    DONE = "DONE"
+
+
 class Customer(db.Model):
     __tablename__ = "customers"
 
@@ -75,3 +81,58 @@ class Project(db.Model):
 
     customer = db.relationship("Customer", backref="projects")
     manager = db.relationship("User")
+
+
+# Strict 3-tier hierarchy (invariant #12), enforced structurally: Task carries
+# ONLY work_package_id — there is no skip-level FK to Section or Project.
+# `position` is contiguous 0..n-1 within each parent scope, maintained
+# exclusively by app/projects/services.py (no DB unique constraint: position
+# swaps would transiently collide without deferred constraints, which SQLite
+# lacks — see DECISIONS.md).
+
+
+class Section(db.Model):
+    __tablename__ = "sections"
+
+    id = db.Column(db.Integer, primary_key=True)
+    project_id = db.Column(db.Integer, db.ForeignKey("projects.id"), nullable=False)
+    name = db.Column(db.String(255), nullable=False)
+    position = db.Column(db.Integer, nullable=False)
+
+    project = db.relationship("Project", backref="sections")
+
+
+class WorkPackage(db.Model):
+    __tablename__ = "work_packages"
+
+    id = db.Column(db.Integer, primary_key=True)
+    section_id = db.Column(db.Integer, db.ForeignKey("sections.id"), nullable=False)
+    name = db.Column(db.String(255), nullable=False)
+    position = db.Column(db.Integer, nullable=False)
+    estimated_hours = db.Column(db.Numeric(10, 2), nullable=True)
+
+    section = db.relationship("Section", backref="work_packages")
+
+
+class Task(db.Model):
+    __tablename__ = "tasks"
+
+    id = db.Column(db.Integer, primary_key=True)
+    work_package_id = db.Column(
+        db.Integer, db.ForeignKey("work_packages.id"), nullable=False
+    )
+    title = db.Column(db.String(255), nullable=False)
+    # Plain editable field like Person.qualification_status — NOT service-managed
+    # (CLAUDE.md rule #7 covers Lead and Offer status only).
+    status = db.Column(
+        db.Enum(TaskStatus, native_enum=False, length=20),
+        nullable=False,
+        default=TaskStatus.TODO,
+        server_default=TaskStatus.TODO.value,
+    )
+    assignee_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    estimated_hours = db.Column(db.Numeric(10, 2), nullable=True)
+    position = db.Column(db.Integer, nullable=False)
+
+    work_package = db.relationship("WorkPackage", backref="tasks")
+    assignee = db.relationship("User")

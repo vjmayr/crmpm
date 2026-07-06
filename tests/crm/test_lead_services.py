@@ -148,6 +148,9 @@ def test_migration_upgrade_and_downgrade_run_cleanly(tmp_path):
         "offers",
         "customers",
         "projects",
+        "sections",
+        "work_packages",
+        "tasks",
     }
 
     run_db("upgrade")
