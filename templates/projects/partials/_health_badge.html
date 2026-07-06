@@ -1,0 +1,22 @@
+{#
+  Health signal per DECISIONS.md: budget_hours vs the LARGER of the two
+  estimate sums (conservative — whichever level predicts more work is the one
+  that threatens the budget). Numbers always rendered alongside the badge so
+  color is never the only carrier of meaning.
+#}
+{% macro health_badge(entry) %}
+{% set larger = entry.wp_hours if entry.wp_hours > entry.task_hours else entry.task_hours %}
+{% if entry.health == "no_budget" %}
+<span class="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500">No budget set</span>
+<span class="text-xs text-gray-400 ml-1">{{ larger }}h estimated</span>
+{% elif entry.health == "within" %}
+<span class="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">Within budget</span>
+<span class="text-xs text-gray-500 ml-1">{{ larger }}h of {{ entry.budget_hours }}h</span>
+{% elif entry.health == "near" %}
+<span class="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">Near budget (&gt;80%)</span>
+<span class="text-xs text-gray-500 ml-1">{{ larger }}h of {{ entry.budget_hours }}h</span>
+{% else %}
+<span class="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-800">Over budget</span>
+<span class="text-xs text-gray-500 ml-1">{{ larger }}h of {{ entry.budget_hours }}h</span>
+{% endif %}
+{% endmacro %}

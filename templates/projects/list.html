@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "projects/partials/_health_badge.html" import health_badge %}
 
 {% block title %}Projects — CRMPM{% endblock %}
 
@@ -14,7 +15,7 @@
     "COMPLETED": "bg-blue-100 text-blue-800",
     "ARCHIVED": "bg-gray-200 text-gray-600",
 } %}
-<table class="min-w-full divide-y divide-gray-200 max-w-3xl">
+<table class="min-w-full divide-y divide-gray-200 max-w-5xl">
     <thead>
         <tr class="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
             <th class="py-2 pr-4">Name</th>
@@ -22,10 +23,12 @@
             <th class="py-2 pr-4">Manager</th>
             <th class="py-2 pr-4">Status</th>
             <th class="py-2 pr-4">Budget</th>
+            <th class="py-2 pr-4">Health</th>
         </tr>
     </thead>
     <tbody class="divide-y divide-gray-100">
-        {% for project in projects %}
+        {% for entry in entries %}
+        {% set project = entry.project %}
         <tr>
             <td class="py-2 pr-4">
                 <a href="{{ url_for('projects.project_detail', project_id=project.id) }}" class="text-blue-600 hover:underline">{{ project.name }}</a>
@@ -38,10 +41,13 @@
             <td class="py-2 pr-4">
                 <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium {{ 'bg-orange-100 text-orange-800' if project.budget_type.value == 'HARD' else 'bg-blue-100 text-blue-800' }}">{{ project.budget_type.value.title() }}</span>
             </td>
+            <td class="py-2 pr-4">{{ health_badge(entry) }}</td>
         </tr>
         {% else %}
         <tr>
-            <td colspan="5" class="py-4 text-gray-400">No projects yet.</td>
+            <td colspan="6" class="py-6 text-sm text-gray-400">
+                No projects yet — <a href="{{ url_for('projects.project_create') }}" class="text-blue-600 hover:underline">create one manually</a> or accept an offer from the pipeline.
+            </td>
         </tr>
         {% endfor %}
     </tbody>

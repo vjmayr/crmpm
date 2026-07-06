@@ -22,7 +22,7 @@ from app.projects.models import (
     TaskStatus,
     WorkPackage,
 )
-from app.projects.queries import project_rollup
+from app.projects.queries import portfolio_rollup, project_rollup
 from app.projects.services import (
     create_customer,
     create_project,
@@ -92,8 +92,11 @@ def customer_create():
 @projects_bp.route("/")
 @login_required
 def index():
-    projects = Project.query.order_by(Project.id.desc()).all()
-    return render_template("projects/list.html", projects=projects)
+    # portfolio_rollup covers all statuses here; the dashboard's strip
+    # passes [ProjectStatus.ACTIVE] — same query, different filter.
+    entries = portfolio_rollup()
+    entries.reverse()  # newest project first, matching the old ordering
+    return render_template("projects/list.html", entries=entries)
 
 
 @projects_bp.route("/new", methods=["GET", "POST"])

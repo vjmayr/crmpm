@@ -13,7 +13,9 @@
             {% include "crm/partials/_person_row.html" %}
         {% else %}
         <tr>
-            <td colspan="5" class="py-4 text-gray-400">No people found.</td>
+            <td colspan="5" class="py-6 text-sm text-gray-400">
+                No people found — <a href="{{ url_for('crm.person_create') }}" class="text-blue-600 hover:underline">add the first person</a>.
+            </td>
         </tr>
         {% endfor %}
     </tbody>

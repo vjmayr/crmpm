@@ -26,7 +26,9 @@
         </tr>
         {% else %}
         <tr>
-            <td colspan="3" class="py-4 text-gray-400">No leads found.</td>
+            <td colspan="3" class="py-6 text-sm text-gray-400">
+                No leads found — promote a qualified person from <a href="{{ url_for('crm.person_list') }}" class="text-blue-600 hover:underline">People</a>.
+            </td>
         </tr>
         {% endfor %}
     </tbody>
