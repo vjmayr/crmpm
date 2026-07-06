@@ -149,6 +149,7 @@ class ProposalVersion(db.Model):
     estimation = db.relationship(
         "Estimation", back_populates="version", uselist=False
     )
+    creator = db.relationship("User")
 
 
 @event.listens_for(ProposalVersion, "before_update")
