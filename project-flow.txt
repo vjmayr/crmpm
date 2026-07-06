@@ -1,0 +1,41 @@
+
+## Tool choice: Claude Code, with this chat as the architecture desk
+
+**Claude Code is the right vehicle for all implementation phases** — it works directly in your repo, runs pytest, manages git, and reads `CLAUDE.md` project memory. Between the two variants: use the **VS Code extension** if you want to watch and review diffs inline as they're written (my recommendation for phases 3–4, where you'll want eyes on the FSM and transaction code), and the terminal if you prefer letting it run more autonomously through the boilerplate phases. They're the same engine; this is purely an ergonomics choice, and you can mix.
+
+**Chat (this project)** stays reserved for what it's good at: architecture decisions, reviewing Claude Code's output at phase boundaries, and updating the decision log. Any change to `ARCHITECTURE.md` gets decided here, then handed down.
+
+**Cowork** I'd skip for this project — it's aimed at multi-step knowledge work rather than repo-based development, and adding a third surface contradicts your no-over-engineering principle. If v2 ever needs user docs or launch material, revisit then.
+
+## Model choice per phase
+
+Your Fable/Sonnet split maps cleanly onto Claude Code's model switching. Two practical facts worth knowing first: Fable 5 requires Claude Code v2.1.170 or later — run `claude update` if it's not in your picker, and since v2.1.153, pressing Enter in the `/model` picker saves that model as your default across sessions, while `s` applies it to the current session only — use `s` for your temporary Fable escalations so Sonnet stays your default.
+
+| Phases | Model | Rationale |
+|---|---|---|
+| 0, 1, 6 | Sonnet (default) | Scaffold, CRUD, dashboards — high-volume, low-risk |
+| 2, 5 | Sonnet, Fable spot-checks | Fable session only for the promotion service and reorder/roll-up logic |
+| 3, 4 | **Fable 5** | Versioning invariants and the `offer_accepted()` transaction — your two highest-risk modules |
+| v2 (budget guard) | Fable 5 | Concurrency + money |
+
+One token-economy caveat that fits your cost-conscious approach: switching models mid-session increases token consumption because the new model must reprocess the entire conversation history — prefer starting fresh sessions when changing models. So the rule of thumb is **one phase = one session = one model**, which also keeps context clean.
+
+There's also an `opusplan` alias that automatically uses the stronger model during plan mode and switches to Sonnet for execution — conceptually exactly your split, though it pairs Opus (not Fable) with Sonnet. Worth trying on phases 2 and 5 as a middle ground.
+
+## The concrete sequence
+
+**Step 1 — Repo bootstrap (30 min, manual + Sonnet).** `git init`, Python 3.12 venv, drop `ARCHITECTURE.md` into the repo root. Then create a `CLAUDE.md` that does *not* duplicate the architecture — it should contain only standing orders: "Read ARCHITECTURE.md before any task. Never violate the §6 invariants. Test-first for phases 3/4. HTMX partials over JS. Ask before adding any dependency." Keeping `CLAUDE.md` short and pointing to the blueprint is what keeps every session cheap.
+
+**Step 2 — Phase 0 (Sonnet, one session).** Scaffold per the blueprint. Acceptance check: app boots, Alembic migration runs, login works, one styled base template renders. Commit, tag `phase-0`.
+
+**Step 3 — Phases 1–2 (Sonnet, Fable review).** CRUD + promotion. At the end of phase 2, bring the promotion-service code back *here* (or a short Fable session in Code) for review against invariants #1–2.
+
+**Step 4 — Phases 3–4 (Fable 5, plan mode, test-first).** This is where the discipline pays off. Start each session in plan mode, paste the relevant invariants from §6, and instruct: *tests first, then implementation, don't stop until green.* Phase 4's `offer_accepted()` deserves its own session and its own commit — it's the one function whose failure corrupts both domains.
+
+**Step 5 — Phases 5–6 (Sonnet).** UI volume work, validated by running the existing Fable-written test suite as the regression gate. This is the payoff of step 4: you don't need to re-review Sonnet's output carefully, you just need `pytest` green.
+
+**Step 6 — v1 freeze, then v2 decision point.** Tag `v1.0`, use it for real for a few weeks, and only then come back here to plan the `TimeEntry` + budget-guard phase with actual usage experience informing it. That pause is itself an anti-feature-creep mechanism.
+
+One last habit worth adopting from day one: whenever a session ends with a decision that deviates from the blueprint, have Claude Code append one line to a `DECISIONS.md`. It costs nothing and keeps this chat, the repo, and future sessions from drifting apart.
+
+Want me to draft the `CLAUDE.md` standing-orders file and the Phase 0 kickoff prompt for Sonnet? Those two artifacts would make the handoff turnkey.
