@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+
+{% block title %}{{ "Edit" if person else "New" }} person — CRMPM{% endblock %}
+
+{% block content %}
+<h1 class="text-2xl font-semibold text-gray-900 mb-6">{{ "Edit " ~ person.name if person else "New person" }}</h1>
+
+<form method="post" class="max-w-lg space-y-4">
+    {{ form.hidden_tag() }}
+    <div>
+        {{ form.name.label(class="block text-sm font-medium text-gray-700 mb-1") }}
+        {{ form.name(class="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500") }}
+        {% for error in form.name.errors %}
+        <p class="mt-1 text-sm text-red-600">{{ error }}</p>
+        {% endfor %}
+    </div>
+
+    <div class="rounded border-2 border-amber-300 bg-amber-50 px-4 py-3">
+        <label class="flex items-center gap-2 text-sm font-semibold text-amber-900">
+            {{ form.permission_to_contact() }}
+            Permission to contact
+        </label>
+        <p class="mt-1 text-xs text-amber-800">Off by default. Only enable this with explicit, documented consent from the person.</p>
+    </div>
+
+    <div>
+        {{ form.email.label(class="block text-sm font-medium text-gray-700 mb-1") }}
+        {{ form.email(class="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500") }}
+        {% for error in form.email.errors %}
+        <p class="mt-1 text-sm text-red-600">{{ error }}</p>
+        {% endfor %}
+    </div>
+    <div>
+        {{ form.phone.label(class="block text-sm font-medium text-gray-700 mb-1") }}
+        {{ form.phone(class="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500") }}
+        {% for error in form.phone.errors %}
+        <p class="mt-1 text-sm text-red-600">{{ error }}</p>
+        {% endfor %}
+    </div>
+    <div>
+        {{ form.organization_id.label(class="block text-sm font-medium text-gray-700 mb-1") }}
+        {{ form.organization_id(class="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500") }}
+    </div>
+    <div>
+        {{ form.qualification_status.label(class="block text-sm font-medium text-gray-700 mb-1") }}
+        {{ form.qualification_status(class="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500") }}
+    </div>
+    {{ form.submit(class="rounded bg-blue-600 text-white text-sm font-medium px-4 py-2 hover:bg-blue-700") }}
+</form>
+{% endblock %}

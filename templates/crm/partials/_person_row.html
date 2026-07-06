@@ -1,0 +1,28 @@
+<tr>
+    <td class="py-2 pr-4">
+        <a href="{{ url_for('crm.person_detail', person_id=person.id) }}" class="text-blue-600 hover:underline">{{ person.name }}</a>
+    </td>
+    <td class="py-2 pr-4 text-gray-500">{{ person.email or "—" }}</td>
+    <td class="py-2 pr-4 text-gray-500">{{ person.organization.name if person.organization else "—" }}</td>
+    <td class="py-2 pr-4">
+        <select
+            name="qualification_status"
+            class="rounded border border-gray-300 text-sm px-2 py-1"
+            hx-post="{{ url_for('crm.person_update_qualification', person_id=person.id) }}"
+            hx-trigger="change"
+            hx-target="closest tr"
+            hx-swap="outerHTML"
+        >
+            {% for s in statuses %}
+            <option value="{{ s.value }}" {{ "selected" if person.qualification_status == s else "" }}>{{ s.value.title() }}</option>
+            {% endfor %}
+        </select>
+    </td>
+    <td class="py-2 pr-4">
+        {% if person.permission_to_contact %}
+        <span class="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800">Contactable</span>
+        {% else %}
+        <span class="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-800">No contact permission</span>
+        {% endif %}
+    </td>
+</tr>

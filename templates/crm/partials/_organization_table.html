@@ -1,0 +1,24 @@
+<table class="min-w-full divide-y divide-gray-200">
+    <thead>
+        <tr class="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
+            <th class="py-2 pr-4">Name</th>
+            <th class="py-2 pr-4">Website</th>
+            <th class="py-2 pr-4">People</th>
+        </tr>
+    </thead>
+    <tbody class="divide-y divide-gray-100">
+        {% for organization in organizations %}
+        <tr>
+            <td class="py-2 pr-4">
+                <a href="{{ url_for('crm.organization_detail', organization_id=organization.id) }}" class="text-blue-600 hover:underline">{{ organization.name }}</a>
+            </td>
+            <td class="py-2 pr-4 text-gray-500">{{ organization.website or "—" }}</td>
+            <td class="py-2 pr-4 text-gray-500">{{ organization.people|length }}</td>
+        </tr>
+        {% else %}
+        <tr>
+            <td colspan="3" class="py-4 text-gray-400">No organizations found.</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>

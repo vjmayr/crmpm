@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+
+{% block title %}{{ person.name }} — CRMPM{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-between mb-4">
+    <h1 class="text-2xl font-semibold text-gray-900">{{ person.name }}</h1>
+    <a href="{{ url_for('crm.person_edit', person_id=person.id) }}" class="rounded border border-gray-300 text-sm font-medium px-4 py-2 hover:bg-gray-50">Edit</a>
+</div>
+
+<div class="mb-6">
+    {% if person.permission_to_contact %}
+    <span class="inline-flex items-center rounded-full bg-green-100 px-3 py-1 text-sm font-medium text-green-800">Contactable</span>
+    {% else %}
+    <span class="inline-flex items-center rounded-full bg-red-100 px-3 py-1 text-sm font-medium text-red-800">No contact permission</span>
+    {% endif %}
+</div>
+
+<dl class="grid grid-cols-2 gap-4 max-w-lg text-sm">
+    <dt class="text-gray-500">Email</dt>
+    <dd class="text-gray-900">{{ person.email or "—" }}</dd>
+    <dt class="text-gray-500">Phone</dt>
+    <dd class="text-gray-900">{{ person.phone or "—" }}</dd>
+    <dt class="text-gray-500">Organization</dt>
+    <dd class="text-gray-900">
+        {% if person.organization %}
+        <a href="{{ url_for('crm.organization_detail', organization_id=person.organization.id) }}" class="text-blue-600 hover:underline">{{ person.organization.name }}</a>
+        {% else %}
+        —
+        {% endif %}
+    </dd>
+    <dt class="text-gray-500">Qualification</dt>
+    <dd class="text-gray-900">{{ person.qualification_status.value.title() }}</dd>
+</dl>
+{% endblock %}

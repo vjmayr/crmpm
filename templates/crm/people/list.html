@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block title %}People — CRMPM{% endblock %}
+
+{% block content %}
+<div class="flex items-center justify-between mb-6">
+    <h1 class="text-2xl font-semibold text-gray-900">People</h1>
+    <a href="{{ url_for('crm.person_create') }}" class="rounded bg-blue-600 text-white text-sm font-medium px-4 py-2 hover:bg-blue-700">New person</a>
+</div>
+
+<form
+    class="mb-4 flex flex-wrap items-end gap-4"
+    hx-get="{{ url_for('crm.person_list') }}"
+    hx-target="#person-table"
+    hx-swap="innerHTML"
+    hx-trigger="change, keyup changed delay:300ms from:input[name=search]"
+>
+    <div>
+        <label class="block text-xs font-medium text-gray-500 mb-1">Search</label>
+        <input type="text" name="search" value="{{ search }}" placeholder="Name or email…"
+            class="rounded border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+    </div>
+    <div>
+        <label class="block text-xs font-medium text-gray-500 mb-1">Qualification</label>
+        <select name="qualification_status" class="rounded border border-gray-300 px-3 py-2 text-sm">
+            <option value="">All</option>
+            {% for s in statuses %}
+            <option value="{{ s.value }}" {{ "selected" if status == s.value else "" }}>{{ s.value.title() }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <label class="flex items-center gap-2 text-sm text-gray-700 pb-2">
+        <input type="checkbox" name="contactable_only" value="1" {{ "checked" if contactable_only else "" }}>
+        Contactable only
+    </label>
+</form>
+
+<div id="person-table">
+    {% include "crm/partials/_person_table.html" %}
+</div>
+{% endblock %}
