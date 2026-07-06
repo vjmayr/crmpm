@@ -16,6 +16,7 @@ from app.crm.models import (
     LeadStatus,
     Offer,
     OfferStatus,
+    Organization,
     PricingModel,
     Proposal,
     ProposalVersion,
@@ -139,6 +140,12 @@ def project_for_offer(offer):
     """Read-only UI-display helper — app/services/ stays the only module that
     imports across the CRM/Projects seam, so routes never import Project."""
     return Project.query.filter_by(offer_id=offer.id).first()
+
+
+def organizations_directory():
+    """Read-only seam helper: organizations for the projects-domain customer
+    form's picker, so app/projects/ never imports app.crm.models."""
+    return Organization.query.order_by(Organization.name).all()
 
 
 def project_for_lead(lead):

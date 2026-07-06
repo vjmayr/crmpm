@@ -11,8 +11,16 @@ covers Lead and Offer status only).
 """
 
 from app.extensions import db
-from app.projects.exceptions import StructureError
-from app.projects.models import Section, Task, WorkPackage
+from app.projects.exceptions import ProjectValidationError, StructureError
+from app.projects.models import (
+    BudgetType,
+    Customer,
+    OverHoursPolicy,
+    Project,
+    Section,
+    Task,
+    WorkPackage,
+)
 
 #: Parent FK attribute per hierarchy tier — the position scope.
 _PARENT_ATTR = {Section: "project_id", WorkPackage: "section_id", Task: "work_package_id"}
@@ -162,3 +170,102 @@ def move_to_parent(item, new_parent):
         "Moving items to a different parent is not supported in v1. "
         "Delete and recreate, or wait for v2."
     )
+
+
+# --- customers and manual projects (Phase 5b) ---------------------------------
+
+
+def create_customer(organization_id, customer_type):
+    """Manual customer creation — the only place INTERNAL customers are born.
+
+    The unique organization_id constraint is the backstop (invariant #9);
+    the route surfaces the IntegrityError inline.
+    """
+    customer = Customer(organization_id=organization_id, type=customer_type)
+    db.session.add(customer)
+    db.session.commit()
+    return customer
+
+
+def _validate_budget(budget_type, budget_hours, over_hours_policy, over_rate):
+    """HARD => hours + policy (the DB CHECK, invariant #11), and
+    BILL_AT_RATE => over_rate (§3.2). Returns normalized SOFT fields."""
+    if budget_type == BudgetType.HARD:
+        missing = []
+        if budget_hours is None:
+            missing.append("budget_hours")
+        if over_hours_policy is None:
+            missing.append("over_hours_policy")
+        if over_hours_policy == OverHoursPolicy.BILL_AT_RATE and over_rate is None:
+            missing.append("over_rate")
+        if missing:
+            raise ProjectValidationError(
+                f"HARD budget requires: {', '.join(missing)}."
+            )
+        return budget_hours, over_hours_policy, over_rate
+
+    # SOFT: policy and over_rate are meaningless — normalize to None.
+    return budget_hours, None, None
+
+
+def create_project(customer, name, manager, budget_type, budget_hours=None,
+                   over_hours_policy=None, over_rate=None):
+    """Manual (offer-less) project creation, e.g. for internal work."""
+    budget_hours, over_hours_policy, over_rate = _validate_budget(
+        budget_type, budget_hours, over_hours_policy, over_rate
+    )
+    project = Project(
+        name=name,
+        customer_id=customer.id,
+        manager_id=manager.id,
+        budget_type=budget_type,
+        budget_hours=budget_hours,
+        over_hours_policy=over_hours_policy,
+        over_rate=over_rate,
+    )
+    db.session.add(project)
+    db.session.commit()
+    return project
+
+
+def set_planning_hours(project, budget_hours):
+    """Set budget_hours on an offer-linked project (see DECISIONS.md).
+
+    Only SOFT offer-linked projects accept this: FIXED acceptances arrive
+    with NULL hours (internal planning data, set/edited here); a HARD
+    project's hours come from the accepted estimation and are read-only.
+    """
+    if project.offer_id is None:
+        raise ProjectValidationError(
+            "Use update_project_budget for offer-less projects."
+        )
+    if project.budget_type == BudgetType.HARD:
+        raise ProjectValidationError(
+            "HARD budget hours record the accepted contract and are read-only."
+        )
+    project.budget_hours = budget_hours
+    db.session.commit()
+    return project
+
+
+def update_project_budget(project, budget_type, budget_hours=None,
+                          over_hours_policy=None, over_rate=None):
+    """Full budget editing — offer-less projects only.
+
+    Offer-linked projects record the accepted contract: budget_type,
+    over_hours_policy, and over_rate are read-only there (see DECISIONS.md).
+    """
+    if project.offer_id is not None:
+        raise ProjectValidationError(
+            "This project's budget records an accepted offer; only planning "
+            "hours can be set (SOFT projects)."
+        )
+    budget_hours, over_hours_policy, over_rate = _validate_budget(
+        budget_type, budget_hours, over_hours_policy, over_rate
+    )
+    project.budget_type = budget_type
+    project.budget_hours = budget_hours
+    project.over_hours_policy = over_hours_policy
+    project.over_rate = over_rate
+    db.session.commit()
+    return project

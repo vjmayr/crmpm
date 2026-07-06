@@ -1,10 +1,8 @@
-from decimal import Decimal, InvalidOperation
-
 from flask_wtf import FlaskForm
 from wtforms import BooleanField, SelectField, StringField, SubmitField, TextAreaField
-from wtforms.validators import DataRequired, Length, Optional, Regexp, ValidationError
+from wtforms.validators import DataRequired, Length, Optional, Regexp
 
-from app.core.validators import EMAIL_REGEX
+from app.core.validators import EMAIL_REGEX, valid_decimal_string
 from app.crm.models import PricingModel, QualificationStatus, RateUnit
 
 
@@ -62,33 +60,23 @@ class ProposalVersionForm(FlaskForm):
     submit = SubmitField("Create revision")
 
 
-def _valid_decimal_string(form, field):
-    value = (field.data or "").strip()
-    if not value:
-        return
-    try:
-        Decimal(value)
-    except InvalidOperation as exc:
-        raise ValidationError("Enter a valid number.") from exc
-
-
 class EstimationForm(FlaskForm):
     pricing_model = SelectField(
         "Pricing model",
         choices=[(m.value, m.value.replace("_", " ").title()) for m in PricingModel],
         validators=[DataRequired()],
     )
-    fixed_price = StringField("Fixed price", validators=[Optional(), _valid_decimal_string])
-    rate_amount = StringField("Rate amount", validators=[Optional(), _valid_decimal_string])
+    fixed_price = StringField("Fixed price", validators=[Optional(), valid_decimal_string])
+    rate_amount = StringField("Rate amount", validators=[Optional(), valid_decimal_string])
     rate_unit = SelectField(
         "Rate unit",
         choices=[("", "—")] + [(u.value, u.value.title()) for u in RateUnit],
         validators=[Optional()],
     )
     estimated_units = StringField(
-        "Estimated units", validators=[Optional(), _valid_decimal_string]
+        "Estimated units", validators=[Optional(), valid_decimal_string]
     )
     additional_rate = StringField(
-        "Additional rate (optional)", validators=[Optional(), _valid_decimal_string]
+        "Additional rate (optional)", validators=[Optional(), valid_decimal_string]
     )
     submit = SubmitField("Save estimation")
