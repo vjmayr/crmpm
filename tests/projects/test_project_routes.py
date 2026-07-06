@@ -319,6 +319,38 @@ def test_rollup_without_budget_shows_no_budget_state(logged_in_client, db, custo
     assert b"No budget set" in response.data
 
 
+# --- budget-health column on the projects list (Phase 6) ------------------------
+
+
+def test_projects_list_renders_one_project_per_health_state(logged_in_client, db, customer, test_user):
+    def with_wp(name, budget_hours, wp_hours):
+        project = create_project(customer, name, test_user, BudgetType.SOFT, budget_hours=budget_hours)
+        section = create_section(project, "S")
+        create_work_package(section, "WP", estimated_hours=wp_hours)
+        return project
+
+    create_project(customer, "No Budget Proj", test_user, BudgetType.SOFT)
+    with_wp("Within Proj", Decimal("40"), Decimal("10"))
+    with_wp("Near Proj", Decimal("40"), Decimal("35"))
+    with_wp("Over Proj", Decimal("40"), Decimal("55"))
+
+    body = logged_in_client.get("/projects/").data.decode()
+
+    assert "No budget set" in body
+    assert "Within budget" in body
+    assert "Near budget" in body
+    assert "Over budget" in body
+    # Numbers alongside — color is never the only carrier of meaning.
+    assert "35.00h of 40.00h" in body
+    assert "55.00h of 40.00h" in body
+
+
+def test_projects_list_empty_state(logged_in_client, db):
+    body = logged_in_client.get("/projects/").data.decode()
+    assert "No projects yet" in body
+    assert "create one manually" in body
+
+
 # --- budget editing rules --------------------------------------------------------
 
 
