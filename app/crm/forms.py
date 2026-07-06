@@ -1,9 +1,11 @@
+from decimal import Decimal, InvalidOperation
+
 from flask_wtf import FlaskForm
 from wtforms import BooleanField, SelectField, StringField, SubmitField, TextAreaField
-from wtforms.validators import DataRequired, Length, Optional, Regexp
+from wtforms.validators import DataRequired, Length, Optional, Regexp, ValidationError
 
 from app.core.validators import EMAIL_REGEX
-from app.crm.models import QualificationStatus
+from app.crm.models import PricingModel, QualificationStatus, RateUnit
 
 
 def coerce_optional_int(value):
@@ -46,3 +48,47 @@ class LeadDiscoveryForm(FlaskForm):
     pain_points = TextAreaField("Pain points", validators=[Optional()])
     discovery_notes = TextAreaField("Discovery notes", validators=[Optional()])
     submit = SubmitField("Save discovery notes")
+
+
+class ProposalForm(FlaskForm):
+    title = StringField("Title", validators=[DataRequired(), Length(max=255)])
+    content = TextAreaField("Content", validators=[DataRequired()])
+    submit = SubmitField("Create proposal")
+
+
+class ProposalVersionForm(FlaskForm):
+    content = TextAreaField("Content", validators=[DataRequired()])
+    copy_estimation = BooleanField("Copy the current estimation forward", default=True)
+    submit = SubmitField("Create revision")
+
+
+def _valid_decimal_string(form, field):
+    value = (field.data or "").strip()
+    if not value:
+        return
+    try:
+        Decimal(value)
+    except InvalidOperation as exc:
+        raise ValidationError("Enter a valid number.") from exc
+
+
+class EstimationForm(FlaskForm):
+    pricing_model = SelectField(
+        "Pricing model",
+        choices=[(m.value, m.value.replace("_", " ").title()) for m in PricingModel],
+        validators=[DataRequired()],
+    )
+    fixed_price = StringField("Fixed price", validators=[Optional(), _valid_decimal_string])
+    rate_amount = StringField("Rate amount", validators=[Optional(), _valid_decimal_string])
+    rate_unit = SelectField(
+        "Rate unit",
+        choices=[("", "—")] + [(u.value, u.value.title()) for u in RateUnit],
+        validators=[Optional()],
+    )
+    estimated_units = StringField(
+        "Estimated units", validators=[Optional(), _valid_decimal_string]
+    )
+    additional_rate = StringField(
+        "Additional rate (optional)", validators=[Optional(), _valid_decimal_string]
+    )
+    submit = SubmitField("Save estimation")
