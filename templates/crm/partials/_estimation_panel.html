@@ -3,6 +3,25 @@
     {% if error %}
     <p class="text-sm text-red-600 mb-3">{{ error }}</p>
     {% endif %}
+
+    {% if locked %}
+    <p class="text-sm text-gray-500 mb-3">Locked — this version's estimation is frozen because an offer has been sent.</p>
+    <dl class="grid grid-cols-2 gap-2 max-w-sm text-sm">
+        <dt class="text-gray-500">Pricing model</dt>
+        <dd class="text-gray-900">{{ version.estimation.pricing_model.value.replace("_", " ").title() }}</dd>
+        {% if version.estimation.pricing_model.value == "FIXED" %}
+        <dt class="text-gray-500">Fixed price</dt>
+        <dd class="text-gray-900">{{ version.estimation.fixed_price }}</dd>
+        {% else %}
+        <dt class="text-gray-500">Rate</dt>
+        <dd class="text-gray-900">{{ version.estimation.rate_amount }} / {{ version.estimation.rate_unit.value.title() }}</dd>
+        <dt class="text-gray-500">Estimated units</dt>
+        <dd class="text-gray-900">{{ version.estimation.estimated_units }}</dd>
+        <dt class="text-gray-500">Additional rate</dt>
+        <dd class="text-gray-900">{{ version.estimation.additional_rate if version.estimation.additional_rate is not none else "—" }}</dd>
+        {% endif %}
+    </dl>
+    {% else %}
     {% if not version.estimation %}
     <p class="text-sm text-gray-400 mb-3">No estimation yet.</p>
     {% endif %}
@@ -32,4 +51,5 @@
         </div>
         {{ estimation_form.submit(class="rounded bg-blue-600 text-white text-sm font-medium px-4 py-2 hover:bg-blue-700") }}
     </form>
+    {% endif %}
 </div>

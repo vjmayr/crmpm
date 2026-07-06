@@ -1,0 +1,54 @@
+{% set offer_badge_classes = {
+    "DRAFT": "bg-gray-100 text-gray-600",
+    "SENT": "bg-blue-100 text-blue-800",
+    "ACCEPTED": "bg-green-100 text-green-800",
+    "DENIED": "bg-red-100 text-red-800",
+} %}
+<div id="offer-status-block" class="border border-gray-200 rounded-lg p-4 mb-6">
+    {% if error %}
+    <div class="mb-3 rounded border border-amber-300 bg-amber-50 p-3">
+        <p class="text-sm text-amber-800">{{ error }}</p>
+        {% if show_org_prompt %}
+        <a href="{{ url_for('crm.person_edit', person_id=offer.version.proposal.lead.person.id) }}" class="text-sm text-blue-600 hover:underline font-medium">Assign an organization first →</a>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <div class="flex items-center gap-3 mb-4">
+        <span class="inline-flex items-center rounded-full px-3 py-1 text-sm font-medium {{ offer_badge_classes[offer.status.value] }}">{{ offer.status.value.title() }}</span>
+        <a href="{{ url_for('crm.lead_detail', lead_id=offer.version.proposal.lead_id) }}" class="text-sm text-gray-500 hover:underline">Lead: {{ offer.version.proposal.lead.status.value.replace("_", " ").title() }}</a>
+    </div>
+
+    <ul class="text-sm text-gray-600 space-y-1 mb-4">
+        <li>Created</li>
+        <li>Sent: {{ (offer.sent_at.strftime('%Y-%m-%d %H:%M') ~ " UTC") if offer.sent_at else "—" }}</li>
+        <li>Decided: {{ (offer.decided_at.strftime('%Y-%m-%d %H:%M') ~ " UTC") if offer.decided_at else "—" }}</li>
+    </ul>
+
+    <div class="flex items-center gap-3">
+        {% if offer.status.value == "DRAFT" %}
+        <button
+            hx-post="{{ url_for('crm.offer_send', offer_id=offer.id) }}"
+            hx-confirm="Sending freezes this version and its pricing."
+            hx-target="#offer-status-block"
+            hx-swap="outerHTML"
+            class="rounded bg-blue-600 text-white text-sm font-medium px-4 py-2 hover:bg-blue-700"
+        >Send</button>
+        {% elif offer.status.value == "SENT" %}
+        <button
+            hx-post="{{ url_for('crm.offer_accept', offer_id=offer.id) }}"
+            hx-confirm="Accepting creates the customer and project. This cannot be undone."
+            hx-target="#offer-status-block"
+            hx-swap="outerHTML"
+            class="rounded bg-green-600 text-white text-sm font-medium px-4 py-2 hover:bg-green-700"
+        >Accept</button>
+        <button
+            hx-post="{{ url_for('crm.offer_deny', offer_id=offer.id) }}"
+            hx-confirm="Deny this offer?"
+            hx-target="#offer-status-block"
+            hx-swap="outerHTML"
+            class="rounded border border-red-300 text-red-600 text-sm font-medium px-4 py-2 hover:bg-red-50"
+        >Deny</button>
+        {% endif %}
+    </div>
+</div>

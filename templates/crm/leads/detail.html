@@ -9,6 +9,12 @@
     {% include "crm/partials/_lead_status_block.html" %}
 </div>
 
+{% if won_project %}
+<p class="mb-8">
+    <a href="{{ url_for('projects.project_detail', project_id=won_project.id) }}" class="text-sm text-blue-600 hover:underline font-medium">View resulting project →</a>
+</p>
+{% endif %}
+
 <h2 class="text-lg font-semibold text-gray-900 mb-3">Person</h2>
 <dl class="grid grid-cols-2 gap-4 max-w-lg mb-3 text-sm">
     <dt class="text-gray-500">Name</dt>
@@ -59,12 +65,19 @@
 </form>
 
 <h2 class="text-lg font-semibold text-gray-900 mt-8 mb-3">Proposals</h2>
+{% set offer_badge_classes = {
+    "DRAFT": "bg-gray-100 text-gray-600",
+    "SENT": "bg-blue-100 text-blue-800",
+    "ACCEPTED": "bg-green-100 text-green-800",
+    "DENIED": "bg-red-100 text-red-800",
+} %}
 <table class="min-w-full divide-y divide-gray-200 max-w-2xl mb-4">
     <thead>
         <tr class="text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">
             <th class="py-2 pr-4">Title</th>
             <th class="py-2 pr-4">Versions</th>
             <th class="py-2 pr-4">Latest</th>
+            <th class="py-2 pr-4">Offers</th>
         </tr>
     </thead>
     <tbody class="divide-y divide-gray-100">
@@ -75,10 +88,17 @@
             </td>
             <td class="py-2 pr-4 text-gray-500">{{ proposal.versions|length }}</td>
             <td class="py-2 pr-4 text-gray-500">{{ proposal.versions[-1].created_at.strftime('%Y-%m-%d') }}</td>
+            <td class="py-2 pr-4">
+                {% for offer in proposal_offers.get(proposal.id, []) %}
+                <a href="{{ url_for('crm.offer_detail', offer_id=offer.id) }}" class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium {{ offer_badge_classes[offer.status.value] }} mr-1">{{ offer.status.value.title() }}</a>
+                {% else %}
+                <span class="text-gray-400">—</span>
+                {% endfor %}
+            </td>
         </tr>
         {% else %}
         <tr>
-            <td colspan="3" class="py-4 text-gray-400">No proposals yet.</td>
+            <td colspan="4" class="py-4 text-gray-400">No proposals yet.</td>
         </tr>
         {% endfor %}
     </tbody>

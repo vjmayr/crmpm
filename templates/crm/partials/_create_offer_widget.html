@@ -1,0 +1,22 @@
+<div id="create-offer-widget">
+    {% if error %}
+    <p class="text-sm text-red-600 mb-2">{{ error }}</p>
+    {% endif %}
+    {% if not version.estimation %}
+    <p class="text-sm text-gray-400">Add an estimation before creating an offer.</p>
+    {% elif open_offer and open_offer.proposal_version_id == version.id %}
+    <a href="{{ url_for('crm.offer_detail', offer_id=open_offer.id) }}" class="text-sm text-blue-600 hover:underline">View offer →</a>
+    {% elif open_offer %}
+    <p class="text-sm text-gray-400">
+        An offer is already open on
+        <a href="{{ url_for('crm.offer_detail', offer_id=open_offer.id) }}" class="text-blue-600 hover:underline">version {{ open_offer.version.version_number }}</a>.
+    </p>
+    {% else %}
+    <button
+        hx-post="{{ url_for('crm.offer_create', version_id=version.id) }}"
+        hx-target="#create-offer-widget"
+        hx-swap="outerHTML"
+        class="rounded bg-blue-600 text-white text-sm font-medium px-4 py-2 hover:bg-blue-700"
+    >Create Offer</button>
+    {% endif %}
+</div>
