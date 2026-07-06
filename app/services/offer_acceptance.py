@@ -12,7 +12,15 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 from app.crm.exceptions import CrmDomainError, OfferStateError
-from app.crm.models import LeadStatus, OfferStatus, PricingModel, RateUnit
+from app.crm.models import (
+    LeadStatus,
+    Offer,
+    OfferStatus,
+    PricingModel,
+    Proposal,
+    ProposalVersion,
+    RateUnit,
+)
 from app.extensions import db
 from app.projects.models import (
     BudgetType,
@@ -125,3 +133,25 @@ def accept_offer(offer, manager):
         raise
 
     return project
+
+
+def project_for_offer(offer):
+    """Read-only UI-display helper — app/services/ stays the only module that
+    imports across the CRM/Projects seam, so routes never import Project."""
+    return Project.query.filter_by(offer_id=offer.id).first()
+
+
+def project_for_lead(lead):
+    """The Project resulting from a WON lead's accepted offer, or None."""
+    if lead.status != LeadStatus.WON:
+        return None
+
+    accepted_offer = (
+        Offer.query.join(ProposalVersion, Offer.proposal_version_id == ProposalVersion.id)
+        .join(Proposal, ProposalVersion.proposal_id == Proposal.id)
+        .filter(Proposal.lead_id == lead.id, Offer.status == OfferStatus.ACCEPTED)
+        .first()
+    )
+    if accepted_offer is None:
+        return None
+    return project_for_offer(accepted_offer)

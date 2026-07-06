@@ -74,3 +74,4 @@ class Project(db.Model):
     )
 
     customer = db.relationship("Customer", backref="projects")
+    manager = db.relationship("User")
