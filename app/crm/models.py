@@ -13,6 +13,14 @@ class QualificationStatus(enum.Enum):
     DISQUALIFIED = "DISQUALIFIED"
 
 
+class LeadStatus(enum.Enum):
+    OPEN = "OPEN"
+    PROPOSAL = "PROPOSAL"
+    OFFER_SENT = "OFFER_SENT"
+    WON = "WON"
+    LOST = "LOST"
+
+
 class Organization(db.Model):
     __tablename__ = "organizations"
 
@@ -56,3 +64,34 @@ class Person(db.Model):
     def contactable(cls):
         """The only sanctioned way to build a 'contactable' list of people."""
         return cls.query.filter(cls.permission_to_contact.is_(True))
+
+
+class Lead(db.Model):
+    __tablename__ = "leads"
+
+    id = db.Column(db.Integer, primary_key=True)
+    # Invariant #2: a Person is promoted at most once — unique at the DB level.
+    person_id = db.Column(
+        db.Integer, db.ForeignKey("people.id"), nullable=False, unique=True
+    )
+    # Status is written ONLY by services (CLAUDE.md rule #7); see app/crm/services.py.
+    status = db.Column(
+        db.Enum(LeadStatus, native_enum=False, length=20),
+        nullable=False,
+        default=LeadStatus.OPEN,
+        server_default=LeadStatus.OPEN.value,
+    )
+    source = db.Column(db.String(255), nullable=True)
+    pain_points = db.Column(db.Text, nullable=True)
+    timeline = db.Column(db.String(255), nullable=True)
+    budget_range = db.Column(db.String(255), nullable=True)
+    discovery_notes = db.Column(db.Text, nullable=True)
+    created_at = db.Column(
+        db.DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    person = db.relationship(
+        "Person", backref=db.backref("lead", uselist=False)
+    )
